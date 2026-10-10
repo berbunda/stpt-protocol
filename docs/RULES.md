@@ -1,0 +1,62 @@
+This document answers for questions:"Which project decisions are considered fundamental?"
+# 1	STPT Project Rules
+
+## 1.1	Licensing
+STPT is licensed under GNU GPLv3. - execution program
+- local path: "E:\prj\rust\stpt\stpt"
+- remote path: "https://github.com/berbunda/stpt"
+STPT-Protocol is licensed under CC0 1.0 Universal - documentation of protocol
+- local path: "E:\prj\rust\stpt\stpt-protocol"
+- remote path: "https://github.com/berbunda/stpt-protocol"
+
+## 1.2	Language
+Rust is the primary implementation language for STPT
+English is the primary implementation language for STPT-Protocol
+
+## 1.3	Architecture
+- STPT is distributed as a single binary.
+- The same binary provides client and server functionality.
+- Windows 11 amd64 and Debian-based Linux amd64 are primary platforms.
+- The secondary platforms are other linux platform, bsd platforms (in future)
+- Connection and Session are distinct protocol concepts.
+- A Session MUST NOT depend on the lifetime of a Connection.
+
+## 1.4	Terminology
+
+### 1.4.1	Tier
+A major roadmap development stage.
+
+Format:
+Tier A, Tier B, Tier C...
+
+### 1.4.2	Roadmap Item
+A development unit belonging to a Tier.
+
+Format:
+A001, A002, A003...
+
+Identifiers are permanent and MUST NOT be reused.
+
+### 1.4.3	Gate
+A runtime, platform, protocol, dependency, or capability
+restriction affecting feature availability.
+
+Format:
+G1, G2, G3...
+
+Gate identifiers are independent of roadmap identifiers.
+
+## 1.5	Claude Note
+You are free to record any information you deem necessary — with the exception of passwords, secrets, and keys — in the NOTES.md file.
+
+## 1.6	Build managements
+Every change to the program code must be accompanied by an increment of the program version in the `Cargo.toml` file under the `[package]` section.
+The versioning follows this structure: x.y.z-b, where
+x - major changes
+y - middle changes
+z - minor changes
+b - bugfixes (builds)
+Resetting lower-order parts: when a higher part increases, every lower part is reset to 0, and `-b` is always written explicitly (e.g. 0.5.16-8 → 0.5.17-0, never 0.5.17), so every version stays in the x.y.z-b form and sorts consistently under semver.
+
+## 1.7 Repository managements
+You may free make commit and push to repository whenever you deem necessary.
