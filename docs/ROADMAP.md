@@ -1,5 +1,5 @@
 # 1	Tier A — Foundation / Local Prototype
-- [x] A001  Rust workspace / project structure ✅ 2026-10-10
+- [x] A001  Project bootstrap: repositories, Rust project, licenses, docs, build check ✅ 2026-10-10
 - [ ] A002  CLI skeleton
 - [ ] A003  unified client/server binary
 - [ ] A004  configuration subsystem
