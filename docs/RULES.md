@@ -60,3 +60,8 @@ Resetting lower-order parts: when a higher part increases, every lower part is r
 
 ## 1.7 Repository managements
 You may free make commit and push to repository whenever you deem necessary.
+
+## 1.8	Security
+- STPT MUST NOT use custom cryptographic algorithms or primitives; only proven implementations.
+- No STPT application data is sent without TLS protection.
+- A server MUST NOT access client files without explicit permission granted by the client.

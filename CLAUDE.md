@@ -21,10 +21,12 @@ Read docs\RULES.md before modifying the project.
 
 After every change, review the documents below and update them when the change affects their contents.
 
-stpt-protocol (protocol, CC0 1.0):
+stpt-protocol (protocol, CC0 1.0). `docs\` holds project files, `specs\` holds the specification:
 - docs\RULES.md - fundamental project decisions (constraints, see 2.1.4)
 - docs\ROADMAP.md - roadmap of realisation of project
-- docs\PROTOCOL.md - STPT protocol specification
+- docs\GATES.md - registry of gates
+- specs\PROTOCOL.md - STPT protocol specification
+- specs\DECISIONS.md - design decisions and open questions; update when a question is decided or reopened
 - README.md - front page of the protocol repository
 
 stpt (program, GPLv3):
