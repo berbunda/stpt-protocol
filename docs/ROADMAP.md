@@ -1,50 +1,48 @@
-# 1	Tier A — Foundation / Local Prototype
-- [x] A001  Project bootstrap: repositories, Rust project, licenses, docs, build check ✅ 2026-10-10
-- [ ] A002  CLI skeleton
-- [ ] A003  unified client/server binary
-- [ ] A004  configuration subsystem
-- [ ] A005  logging/error subsystem
-- [ ] A006  local client ↔ server communication prototype
+This document answers for questions:"In which order is the STPT protocol specified?"
+Protocol track (P) of the roadmap (RULES.md §1.4). The realisation track (R) is in `stpt/docs/ROADMAP.md`.
+An item is completed when its part of specs\PROTOCOL.md is written and its questions in specs\DECISIONS.md are decided.
 
-# 2	Tier B — Transport
-- [ ] B001  QUIC transport
-- [ ] B002  TLS 1.3
-- [ ] B003  server identity
-- [ ] B004  client ↔ server handshake
-- [ ] B005  STPT protocol negotiation
-- [ ] B006  authentication
-- [ ] B007  control stream
+# 1	Tier PA — Foundation
+- [ ] PA001  terminology and concept model
+- [ ] PA002  state model and responsibility boundaries
+- [ ] PA003  conformance language, specification and wire protocol versioning
 
-# 3	Tier C — Terminal MVP
-- [ ] C001  Linux PTY
-- [ ] C002  shell spawning
-- [ ] C003  terminal I/O
-- [ ] C004  terminal resize
-- [ ] C005  signals / Ctrl+C
-- [ ] C006  interactive applications
-- [ ] C007  graceful disconnect
+# 2	Tier PB — Transport / Connection Establishment
+- [ ] PB001  QUIC / TLS 1.3 profile: ALPN, SNI/ECH, 0-RTT policy
+- [ ] PB002  default port
+- [ ] PB003  message encoding and framing (CBOR / CDDL)
+- [ ] PB004  control stream
+- [ ] PB005  server identity and first-contact trust
+- [ ] PB006  HELLO and handshake sequence
+- [ ] PB007  version and capability negotiation, extension rules
+- [ ] PB008  user authentication with channel binding
+- [ ] PB009  errors, timeouts, resource limits
 
-# 4	Tier D — Session Model
-- [ ] D001  Session ID
-- [ ] D002  detached sessions
-- [ ] D003  session persistence after disconnect
-- [ ] D004  session list
-- [ ] D005  session attach
-- [ ] D006  session terminate
-- [ ] D007  automatic reattach
-- [ ] D008  QUIC connection migration
+# 3	Tier PC — Terminal Channel
+- [ ] PC001  terminal stream
+- [ ] PC002  PTY parameters: terminal type, size, environment
+- [ ] PC003  terminal I/O
+- [ ] PC004  terminal resize
+- [ ] PC005  signals
+- [ ] PC006  exit status and channel close
 
-# 5	Tier E — File Transfer
+# 4	Tier PD — Session Model
+- [ ] PD001  Session ID and ownership
+- [ ] PD002  Session lifecycle: create, detach, terminate
+- [ ] PD003  attach authorization, concurrent attachments
+- [ ] PD004  session list
+- [ ] PD005  reattach after Connection loss vs connection migration
 
-# 6	Tier F — Client-side File Access
+# 5	Tier PE — File Transfer
 
-# 7	Tier G — Port Forwarding
+# 6	Tier PF — Client-side File Access
 
-# 8	Tier H — Audit
+# 7	Tier PG — Port Forwarding
 
-# 9	Tier I — Authentication / Identity
+# 8	Tier PH — Audit
 
-# 10	Tier J — Hardening
+# 9	Tier PI — Authentication / Identity
 
-# 11	Tier K — Packaging / Deployment
+# 10	Tier PJ — Security Considerations
 
+# 11	Tier PK — Interoperability / Test Vectors

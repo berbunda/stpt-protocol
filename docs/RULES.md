@@ -25,17 +25,23 @@ English is the primary implementation language for STPT-Protocol
 
 ### 1.4.1	Tier
 A major roadmap development stage.
+The roadmap has two tracks, each in its own file:
+- P — protocol: `stpt-protocol/docs/ROADMAP.md`;
+- R — realisation (program): `stpt/docs/ROADMAP.md`.
 
 Format:
-Tier A, Tier B, Tier C...
+Tier PA, Tier PB, Tier PC...
+Tier RA, Tier RB, Tier RC...
 
 ### 1.4.2	Roadmap Item
 A development unit belonging to a Tier.
 
 Format:
-A001, A002, A003...
+PA001, PA002, PB001...
+RA001, RA002, RB001...
 
 Identifiers are permanent and MUST NOT be reused.
+An R item implementing part of the protocol references the P items it depends on and MUST NOT start before they are at least draft.
 
 ### 1.4.3	Gate
 A runtime, platform, protocol, dependency, or capability

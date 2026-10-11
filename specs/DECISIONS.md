@@ -82,7 +82,8 @@ Keystroke recording is not a reliable log of executed shell commands; secret han
 
 # 9	Versioning and terminology
 - Application version, wire protocol version, Tier and Gate are different entities.
-- Tiers, items and gates: see docs/RULES.md §1.4, docs/ROADMAP.md, docs/GATES.md.
+- ✅ 2026-10-11 The roadmap is split into two tracks: protocol (P, docs/ROADMAP.md) and realisation (R, stpt/docs/ROADMAP.md). R items depend on P items explicitly; the protocol is specified ahead of the implementation.
+- Tiers, items and gates: see docs/RULES.md §1.4, docs/ROADMAP.md, stpt/docs/ROADMAP.md, docs/GATES.md.
 
 # 10	MVP on a local VM
 First verifiable result:

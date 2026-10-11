@@ -15,7 +15,9 @@ Read docs\RULES.md before modifying the project.
 2. add/update tests (skipped for documentation-only items);
 3. update ARCHITECTURE.md and/or PROTOCOL.md;
 4. bump the program version (RULES.md 1.6) if program code changed;
-5. mark the item completed in ROADMAP.md.
+5. mark the item completed in the ROADMAP.md of its track.
+
+P items (protocol) skip steps 2 and 4; their result is PROTOCOL.md and DECISIONS.md.
 
 ## 2.1	Documentation synchronization
 
@@ -23,7 +25,7 @@ After every change, review the documents below and update them when the change a
 
 stpt-protocol (protocol, CC0 1.0). `docs\` holds project files, `specs\` holds the specification:
 - docs\RULES.md - fundamental project decisions (constraints, see 2.1.4)
-- docs\ROADMAP.md - roadmap of realisation of project
+- docs\ROADMAP.md - protocol roadmap (P items)
 - docs\GATES.md - registry of gates
 - specs\PROTOCOL.md - STPT protocol specification
 - specs\DECISIONS.md - design decisions and open questions; update when a question is decided or reopened
@@ -31,6 +33,7 @@ stpt-protocol (protocol, CC0 1.0). `docs\` holds project files, `specs\` holds t
 
 stpt (program, GPLv3):
 - docs\ARCHITECTURE.md - architecture of the program code (for developers)
+- docs\ROADMAP.md - realisation roadmap (R items)
 - README.md - user documentation, front page of the program repository
 
 ### 2.1.1	ROADMAP.md
