@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-04 (2026-10-11). Changes: see Document history.
+Specification version: draft-05 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -214,6 +214,26 @@ channel-open = [
 - The receiver checks the kind and the Authentication Context. To reject, it resets the stream and sends STOP_SENDING with an error code (PB009); the Connection stays open.
 - After acceptance the stream carries messages of that channel kind only. Further streams of the same Channel, if any, are defined by its kind.
 
+# 9	Server Identity and first-contact trust
+
+## 9.1	Server Identity key
+- A Server Identity is a long-term signature key pair. Endpoints MUST support Ed25519 (RFC 8032; TLS signature scheme `ed25519`). Other algorithms: later specification versions.
+- The Server presents its public key in the TLS handshake as a Raw Public Key (RFC 7250): the Client MUST offer only `RawPublicKey` in `server_certificate_type`, and the Server MUST select it. X.509 certificates are not used in this version.
+- The TLS handshake signature proves that the Server holds the private key of the presented public key.
+
+## 9.2	Fingerprint
+- The fingerprint of a public key is SHA-256 over its DER-encoded SubjectPublicKeyInfo.
+- Text form: `SHA256:` followed by the base64 encoding of the hash without padding (RFC 4648 §4), e.g. `SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU`.
+- A Client MUST display the full fingerprint and MUST compare full keys or full fingerprints, never prefixes.
+
+## 9.3	Trust store and TOFU
+- A Client keeps a trust store mapping a Server address (the DNS name or IP address as given by the user, and the port) to a trusted public key. Entries change only by explicit user action.
+- Known key: the presented key MUST equal the trust store entry; otherwise see "Changed key".
+- First contact (no entry): the Client MUST either verify the key against a fingerprint supplied out of band (e.g. on the command line) or show the fingerprint and obtain explicit user confirmation. Without either, for example in non-interactive use, the Client MUST abort the Connection.
+- Changed key: the Client MUST abort the Connection, MUST show the stored and the presented fingerprints, and MUST NOT offer to accept the new key in the same dialog. The user replaces the entry by a separate explicit action.
+- The Client MUST NOT send any STPT message, HELLO included, before the Server key is trusted.
+- Key rotation: not yet specified (DECISIONS.md §6).
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -227,6 +247,9 @@ Collected from all sections; consolidated in Tier PJ.
 - Length-prefixed frames let a receiver enforce its size limit before buffering; strict CBOR rules remove parser ambiguity such as duplicate keys (§7.2, §7.4).
 - Security-relevant fields are never silently ignored: they require a negotiated capability (§7.3).
 - Before authentication the peer cannot open any stream but the control stream; QUIC stream limits enforce this (§8.2).
+- TOFU leaves first contact open to an active attacker unless the fingerprint is verified out of band (§9.3).
+- Users tend to compare fingerprint prefixes; full comparison is required (§9.2).
+- Ed25519 is not secure against a quantum attacker; post-quantum Server Identity keys are an open question (DECISIONS.md §6).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -234,3 +257,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-02 (2026-10-11): default port UDP 843 (§6.6).
 - draft-03 (2026-10-11): message encoding and framing (§7).
 - draft-04 (2026-10-11): control Channel and Channel opening (§8).
+- draft-05 (2026-10-11): Server Identity and first-contact trust (§9).

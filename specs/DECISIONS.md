@@ -49,7 +49,10 @@ Do not create differences for the sake of differences.
 
 # 6	Authentication and security
 - No custom cryptographic algorithms; only proven TLS and cryptographic implementations.
-- Server identity: TOFU model with SSH known_hosts-like UX; connection refused on unexpected identity change.
+- ✅ 2026-10-11 Server identity: Ed25519 key presented as a TLS Raw Public Key (RFC 7250), no X.509; fingerprint `SHA256:<base64>` over SPKI, always compared in full; TOFU with SSH known_hosts-like UX, keyed by address and port; first contact needs user confirmation or an out-of-band fingerprint; a changed key aborts the Connection (PROTOCOL.md §9).
+- ❓ Server key rotation (e.g. new key signed by the old one, sent after the handshake): postponed.
+- ❓ Post-quantum or hybrid Server Identity keys (e.g. ML-DSA).
+- ❓ CA model with X.509 certificates as an alternative to TOFU.
 - ✅ 2026-10-10 User authentication happens at the STPT application layer after the TLS handshake. The client proves possession of its key by signing a value obtained from the TLS exporter of the current Connection (channel binding), so the proof cannot be reused on another Connection.
 - Short-lived certificates, CA: promising, not required for the first MVP. Hybrid post-quantum key exchange: see §5.
 - Authorization of Session attach and of client file system operations must be defined explicitly.
@@ -108,7 +111,7 @@ Next experiment:
 - ✅ 2026-10-10 Message encoding: CBOR (RFC 8949) with CDDL schemas (RFC 8610).
 - ✅ 2026-10-11 Framing: QUIC varint length + one CBOR message `[type, {int => any}]`; deterministic encoding, strict receiver rules; bidirectional streams only; bulk data always inside framed messages, no raw byte streams (PROTOCOL.md §7).
 - ❓ Message type allocation and extension rules: PB007. (Protocol version model: ✅ 2026-10-11, §9.)
-- ❓ Server identity, first-contact trust, key rotation.
+- ✅ 2026-10-11 Server identity and first-contact trust (§6). Key rotation: ❓ §6.
 - ❓ User authentication methods, mapping to OS accounts, access rights.
 - ❓ Session ID, ownership, lifetimes, attach/detach, concurrent access.
 - ❓ Resource limits, timeouts, error handling, DoS protection.
