@@ -11,7 +11,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PB001  QUIC / TLS 1.3 profile: ALPN, SNI/ECH, 0-RTT policy ✅ 2026-10-11
 - [x] PB002  default port ✅ 2026-10-11
 - [x] PB003  message encoding and framing (CBOR / CDDL) ✅ 2026-10-11
-- [ ] PB004  control stream
+- [x] PB004  control stream ✅ 2026-10-11
 - [ ] PB005  server identity and first-contact trust
 - [ ] PB006  HELLO and handshake sequence
 - [ ] PB007  version and capability negotiation, extension rules

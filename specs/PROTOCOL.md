@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-03 (2026-10-11). Changes: see Document history.
+Specification version: draft-04 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -185,6 +185,35 @@ message = [
 - A receiver MAY reject other non-deterministic encodings.
 - Rejection is a protocol violation handled per §0.2 and PB009.
 
+# 8	Control Channel and Channel opening
+
+## 8.1	Control stream
+- The control Channel uses the first client-initiated bidirectional stream (stream ID 0). The Client opens it immediately after the handshake; its first message is HELLO (PB006).
+- The control stream lives as long as the Connection. If either direction of it ends (FIN) or is reset (RESET_STREAM, STOP_SENDING), the Endpoint MUST close the Connection with an error (PB009).
+- The control Channel carries connection-level messages: HELLO and negotiation (PB006, PB007), user authentication (PB008), Session operations (PD), errors and close (PB009).
+- A message not permitted on the control stream, or not permitted in the current Connection state (§3.1), is a protocol violation.
+- A sender SHOULD give the control stream priority over other streams.
+
+## 8.2	Streams before authentication
+Until the Connection is Authenticated only the control Channel is available (§3.1). This is enforced by QUIC stream limits:
+- The Server MUST set `initial_max_streams_bidi` to 1 and MAY raise the limit with MAX_STREAMS only after the Connection is Authenticated.
+- The Client MUST set `initial_max_streams_bidi` to 0 and MAY raise it only after the Connection is Authenticated, if it accepts server-initiated Channels.
+- An Endpoint receiving a stream other than the control stream before the Connection is Authenticated MUST close the Connection with an error.
+
+## 8.3	Channel opening
+Every Channel other than control is opened on a new bidirectional stream. The opener's first message on it is CHANNEL_OPEN:
+```
+channel-open = [
+  type: CHANNEL_OPEN,      ; value: PB007
+  body: {
+    0 => uint,             ; channel kind (terminal: PC001; others: later Tiers)
+    * int => any,          ; parameters defined by the channel kind
+  },
+]
+```
+- The receiver checks the kind and the Authentication Context. To reject, it resets the stream and sends STOP_SENDING with an error code (PB009); the Connection stays open.
+- After acceptance the stream carries messages of that channel kind only. Further streams of the same Channel, if any, are defined by its kind.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -197,9 +226,11 @@ Collected from all sections; consolidated in Tier PJ.
 - On Unix-like systems the default port is privileged, so an unprivileged local user cannot occupy it (§6.6).
 - Length-prefixed frames let a receiver enforce its size limit before buffering; strict CBOR rules remove parser ambiguity such as duplicate keys (§7.2, §7.4).
 - Security-relevant fields are never silently ignored: they require a negotiated capability (§7.3).
+- Before authentication the peer cannot open any stream but the control stream; QUIC stream limits enforce this (§8.2).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
 - draft-01 (2026-10-11): transport profile: QUIC, TLS 1.3, ALPN, SNI/ECH, 0-RTT (§6).
 - draft-02 (2026-10-11): default port UDP 843 (§6.6).
 - draft-03 (2026-10-11): message encoding and framing (§7).
+- draft-04 (2026-10-11): control Channel and Channel opening (§8).
