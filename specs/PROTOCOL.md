@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-02 (2026-10-11). Changes: see Document history.
+Specification version: draft-03 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -143,6 +143,48 @@ Each Connection is one QUIC connection secured by TLS 1.3.
 - The port is in the system range: on Unix-like systems an unprivileged user cannot bind it, so a local user cannot impersonate the Server on its default port. Windows has no such restriction.
 - The port is not registered with IANA. If registration yields a different number, the default changes in a later specification version.
 
+# 7	Message encoding and framing
+
+## 7.1	Streams
+- Channels use bidirectional QUIC streams only. Endpoints MUST set the transport parameter `initial_max_streams_uni` to 0.
+- Every stream carries a sequence of frames (§7.2) in each direction; no stream carries unframed bytes.
+- The control Channel and its stream: PB004. The first message on any other stream identifies its Channel: PB004, PC001.
+
+## 7.2	Frame
+```
+frame = length payload
+  length  : QUIC variable-length integer (RFC 9000 §16), the size of payload in bytes
+  payload : exactly one CBOR data item, a message (§7.3)
+```
+- `length` MUST NOT be 0.
+- A receiver MUST check `length` against its message size limit before buffering the payload. Every Endpoint MUST accept messages of at least 65535 bytes; larger limits: PB007, PB009.
+- A frame MAY span several QUIC STREAM frames. The end of a stream inside a frame is a protocol violation.
+- Bulk data (terminal I/O, files) travels as CBOR byte strings inside messages; a sender splits it into messages within the limit.
+
+## 7.3	Message
+Messages are encoded in CBOR (RFC 8949) and described in CDDL (RFC 8610):
+```
+message = [
+  type: uint,              ; message type
+  body: { * int => any },  ; fields with integer keys, defined per type
+]
+```
+- Message types and fields are defined by the sections that use them. Type allocation, unknown types and extension rules: PB007.
+- A receiver MUST ignore unknown keys in `body`. A field whose ignoring would affect security MUST be sent only after the capability that defines it has been negotiated (PB007).
+
+## 7.4	CBOR rules
+- A sender MUST use deterministic encoding (RFC 8949 §4.2.1): preferred serialization, definite lengths, sorted map keys.
+- A receiver MUST reject a message that:
+  - is not well-formed CBOR, or a payload that is not exactly one data item;
+  - uses indefinite-length encoding;
+  - contains duplicate map keys;
+  - contains tags, floating-point numbers, or simple values other than `false`, `true` and `null`, unless the message definition allows them;
+  - contains a text string that is not valid UTF-8;
+  - exceeds the nesting depth limit of the receiver (PB009);
+  - does not match the CDDL of its type.
+- A receiver MAY reject other non-deterministic encodings.
+- Rejection is a protocol violation handled per §0.2 and PB009.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -153,8 +195,11 @@ Collected from all sections; consolidated in Tier PJ.
 - 0-RTT is forbidden: no replayable application data (§6.5).
 - Resumption never restores user authentication (§6.2).
 - On Unix-like systems the default port is privileged, so an unprivileged local user cannot occupy it (§6.6).
+- Length-prefixed frames let a receiver enforce its size limit before buffering; strict CBOR rules remove parser ambiguity such as duplicate keys (§7.2, §7.4).
+- Security-relevant fields are never silently ignored: they require a negotiated capability (§7.3).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
 - draft-01 (2026-10-11): transport profile: QUIC, TLS 1.3, ALPN, SNI/ECH, 0-RTT (§6).
 - draft-02 (2026-10-11): default port UDP 843 (§6.6).
+- draft-03 (2026-10-11): message encoding and framing (§7).

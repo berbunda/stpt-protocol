@@ -29,7 +29,7 @@ Do not create differences for the sake of differences.
 - Endpoint, Client, Server, Connection, Channel, Stream, Identity, Account, Authentication Context, Session, Attachment and Retention Policy are distinct concepts (see PROTOCOL.md §1, §2).
 - ✅ 2026-10-11 A Session is a server-side execution context owned by an Account, not only a terminal; the terminal is one of its Channels.
 - ✅ 2026-10-11 Persistence is not a kind of Session: every Session is independent of Connections, and its life without an Attachment is set by the server Retention Policy. A new Connection may attach to it after authorization.
-- ✅ 2026-10-11 Channel (logical service: control, terminal, files, other) and Stream (transport unit) are separate terms; the mapping is defined in PB003/PB004.
+- ✅ 2026-10-11 Channel (logical service: control, terminal, files, other) and Stream (transport unit) are separate terms. Channels use bidirectional streams carrying framed messages (PROTOCOL.md §7.1); the control stream: PB004.
 - ✅ 2026-10-11 State model (PROTOCOL.md §3): Authenticated is a Connection state, not only a property; until it only the control Channel is available. A Session has an Exited state that keeps the exit status for later Attachments under Retention Policy.
 - ✅ 2026-10-11 A Connection is not bound to a network path: QUIC connection migration keeps the Connection; after Connection loss a new Connection is required.
 - SSH already multiplexes channels. The QUIC advantage is, among others, independent loss recovery per stream.
@@ -105,7 +105,8 @@ Next experiment:
 
 # 11	Open questions before protocol work
 - ✅ 2026-10-10 Message encoding: CBOR (RFC 8949) with CDDL schemas (RFC 8610).
-- ❓ Frame format, message types and extension rules. (Protocol version model: ✅ 2026-10-11, §9.)
+- ✅ 2026-10-11 Framing: QUIC varint length + one CBOR message `[type, {int => any}]`; deterministic encoding, strict receiver rules; bidirectional streams only; bulk data always inside framed messages, no raw byte streams (PROTOCOL.md §7).
+- ❓ Message type allocation and extension rules: PB007. (Protocol version model: ✅ 2026-10-11, §9.)
 - ❓ Server identity, first-contact trust, key rotation.
 - ❓ User authentication methods, mapping to OS accounts, access rights.
 - ❓ Session ID, ownership, lifetimes, attach/detach, concurrent access.
