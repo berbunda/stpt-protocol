@@ -38,6 +38,7 @@ Do not create differences for the sake of differences.
 # 5	Transport and connection establishment
 - ✅ 2026-10-10 QUIC over UDP with TLS 1.3. Candidate Rust library: `quinn` (with `rustls`).
 - Order: QUIC/TLS handshake and server identity verification → STPT HELLO → version and capability negotiation → user authentication → Session create/attach.
+- ✅ 2026-10-11 HELLO: one round trip CLIENT_HELLO → SERVER_HELLO on the control stream; the Server is silent until CLIENT_HELLO; HELLO is unsigned (protected by TLS); no implementation name or version anywhere in the protocol, unlike the SSH banner (PROTOCOL.md §10).
 - No STPT banner or any application data is sent before the cryptographic channel is established.
 - This does not make the protocol invisible: IP addresses, traffic metadata and QUIC itself remain observable. QUIC Initial packets are only obfuscated (their keys are derivable by anyone).
 - ✅ 2026-10-10 ALPN and SNI travel in cleartext in the ClientHello. Where this exposes too much, Encrypted Client Hello (ECH) is to be used. Server-side ECH is restricted by gate G1.

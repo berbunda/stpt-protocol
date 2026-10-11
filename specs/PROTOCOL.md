@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-05 (2026-10-11). Changes: see Document history.
+Specification version: draft-06 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -234,6 +234,54 @@ channel-open = [
 - The Client MUST NOT send any STPT message, HELLO included, before the Server key is trusted.
 - Key rotation: not yet specified (DECISIONS.md §6).
 
+# 10	HELLO and handshake sequence
+
+## 10.1	Sequence
+```
+Client                                         Server
+  |-- QUIC / TLS 1.3 handshake (§6) ------------>|
+  |   Client verifies the Server key (§9)        |
+  |-- CLIENT_HELLO (stream 0) ------------------>|
+  |<--------------------------------- SERVER_HELLO|
+  |   Connection Established (§3.1)              |
+  |-- user authentication (PB008) -------------->|
+```
+- The Client sends CLIENT_HELLO as the first message on the control stream (§8.1) after the Server key is trusted, and sends nothing else until it receives SERVER_HELLO.
+- The Server MUST NOT send any STPT message before it receives CLIENT_HELLO. It answers with SERVER_HELLO, or with an error followed by Connection close (PB009).
+- Each Endpoint sends exactly one HELLO per Connection. A second HELLO, or any other message in its place, is a protocol violation.
+- After SERVER_HELLO is sent (Server) or received (Client), the Connection is Established.
+- HELLO is not signed: it travels inside TLS, which protects it against modification and downgrade.
+
+## 10.2	Messages
+Type values: PB007.
+```
+client-hello = [
+  type: CLIENT_HELLO,
+  body: {
+    0 => [+ uint],                 ; supported wire versions, most preferred first (§5)
+    ? 1 => capabilities,           ; offered capabilities (PB007)
+    ? 2 => limits,                 ; receiver limits of the Client (PB009)
+    * int => any,
+  },
+]
+
+server-hello = [
+  type: SERVER_HELLO,
+  body: {
+    0 => uint,                     ; selected wire version, one of those offered
+    ? 1 => capabilities,           ; selected capabilities (PB007)
+    ? 2 => limits,                 ; receiver limits of the Server (PB009)
+    3 => [+ uint],                 ; available user authentication methods (PB008)
+    * int => any,
+  },
+]
+```
+- The Server selects the version per PB007. If no offered version is acceptable, it sends an error and closes the Connection; the Client MUST NOT retry with a different version list (§5).
+- The `capabilities` and `limits` types: PB007, PB009.
+
+## 10.3	No implementation identification
+The protocol carries no implementation name or software version. Endpoints MUST NOT send such data in any message or extension field. Interoperability is determined by the wire version and capabilities only.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -250,6 +298,8 @@ Collected from all sections; consolidated in Tier PJ.
 - TOFU leaves first contact open to an active attacker unless the fingerprint is verified out of band (§9.3).
 - Users tend to compare fingerprint prefixes; full comparison is required (§9.2).
 - Ed25519 is not secure against a quantum attacker; post-quantum Server Identity keys are an open question (DECISIONS.md §6).
+- The Server stays silent until CLIENT_HELLO, and the Client sends nothing before the Server key is trusted (§9.3, §10.1).
+- No implementation name or version is sent, so a scanner cannot select targets by software version (§10.3).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -258,3 +308,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-03 (2026-10-11): message encoding and framing (§7).
 - draft-04 (2026-10-11): control Channel and Channel opening (§8).
 - draft-05 (2026-10-11): Server Identity and first-contact trust (§9).
+- draft-06 (2026-10-11): HELLO and handshake sequence (§10).
