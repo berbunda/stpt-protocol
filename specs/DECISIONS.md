@@ -26,9 +26,11 @@ Do not create differences for the sake of differences.
 - Interactive terminal: PTY on Linux; ConPTY for a future Windows server mode.
 
 # 4	Architectural model
-- Endpoint, Connection, Stream, Session, Attachment, Identity and Authentication Context are distinct concepts (see PROTOCOL.md §1).
-- A Session is not owned by a Connection. After connection loss a persistent Session keeps existing according to server policy; a new Connection may attach to it after authorization.
-- A Connection carries independent logical channels (control, terminal, files, other services) on separate QUIC streams.
+- Endpoint, Client, Server, Connection, Channel, Stream, Identity, Account, Authentication Context, Session, Attachment and Retention Policy are distinct concepts (see PROTOCOL.md §1, §2).
+- ✅ 2026-10-11 A Session is a server-side execution context owned by an Account, not only a terminal; the terminal is one of its Channels.
+- ✅ 2026-10-11 Persistence is not a kind of Session: every Session is independent of Connections, and its life without an Attachment is set by the server Retention Policy. A new Connection may attach to it after authorization.
+- ✅ 2026-10-11 Channel (logical service: control, terminal, files, other) and Stream (transport unit) are separate terms; the mapping is defined in PB003/PB004.
+- ✅ 2026-10-11 A Connection is not bound to a network path: QUIC connection migration keeps the Connection; after Connection loss a new Connection is required.
 - SSH already multiplexes channels. The QUIC advantage is, among others, independent loss recovery per stream.
 
 # 5	Transport and connection establishment

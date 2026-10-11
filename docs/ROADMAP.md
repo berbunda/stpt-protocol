@@ -3,7 +3,7 @@ Protocol track (P) of the roadmap (RULES.md §1.4). The realisation track (R) is
 An item is completed when its part of specs\PROTOCOL.md is written and its questions in specs\DECISIONS.md are decided.
 
 # 1	Tier PA — Foundation
-- [ ] PA001  terminology and concept model
+- [x] PA001  terminology and concept model ✅ 2026-10-11
 - [ ] PA002  state model and responsibility boundaries
 - [ ] PA003  conformance language, specification and wire protocol versioning
 
