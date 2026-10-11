@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-07 (2026-10-11). Changes: see Document history.
+Specification version: draft-08 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -320,6 +320,8 @@ Assigned core types:
 | 1 | CLIENT_HELLO | §10.2 |
 | 2 | SERVER_HELLO | §10.2 |
 | 3 | CHANNEL_OPEN | §8.3 |
+| 4 | AUTH_REQUEST | §12.2 |
+| 5 | AUTH_RESULT | §12.2 |
 
 Error and close messages: PB009.
 
@@ -335,6 +337,71 @@ To keep receivers tolerant of unknown values (in the manner of RFC 8701), the fo
 - wire versions of the form 0x?A?A?A?A (0x0A0A0A0A, …, 0xFAFAFAFA).
 
 A Client MAY include such values in CLIENT_HELLO. A Server MUST ignore them and MUST NOT select them.
+
+# 12	User authentication
+
+## 12.1	Method
+This version defines one method: public key signature with channel binding.
+| Id | Method |
+|---|---|
+| 1 | `publickey-ed25519`: Ed25519 user key (RFC 8032) |
+
+- A Server MUST support method 1 and lists its methods in SERVER_HELLO (§10.2).
+- Password authentication is not part of the protocol.
+
+## 12.2	Exchange
+```
+Client                                         Server
+  |-- AUTH_REQUEST ----------------------------->|
+  |<----------------------------------- AUTH_RESULT|
+  |   success: Connection Authenticated (§3.1)   |
+  |   failure: the Client MAY try another key    |
+```
+```
+auth-request = [
+  type: AUTH_REQUEST,
+  body: {
+    0 => uint,              ; method id
+    1 => tstr,              ; Account name
+    2 => bstr .size 32,     ; Ed25519 public key
+    3 => bstr .size 64,     ; Ed25519 signature over auth-signed-data
+    * int => any,
+  },
+]
+
+auth-result = [
+  type: AUTH_RESULT,
+  body: {
+    0 => bool,              ; true: success
+    * int => any,
+  },
+]
+```
+- The Client sends AUTH_REQUEST only in the Established state and only one at a time: the next one after a failed AUTH_RESULT.
+- There is no request to test whether a key is acceptable without a signature.
+
+## 12.3	Channel binding
+The signature covers the deterministic CBOR encoding (§7.4) of:
+```
+auth-signed-data = [
+  "STPT user authentication",   ; context string
+  bstr .size 32,                ; TLS exporter value
+  uint,                         ; method id
+  tstr,                         ; Account name
+  bstr .size 32,                ; Ed25519 public key
+]
+```
+- The exporter value is the TLS exporter of the Connection (RFC 8446 §7.5) with label `EXPORTER-STPT-user-auth`, empty context and length 32.
+- Each Endpoint computes the exporter value itself; it is never sent. The Server rebuilds `auth-signed-data` from its own exporter value and the fields of AUTH_REQUEST.
+- The exporter value is unique to the Connection and depends on its handshake, Server Identity included; a signature is therefore valid on this Connection only and cannot be relayed through another Connection.
+- The Server MUST verify the signature per RFC 8032 §5.1.7.
+
+## 12.4	Server decision
+- Authentication succeeds only if the signature is valid and the public key is authorized for the named Account. How keys are authorized for Accounts is a Server matter (e.g. a per-Account list of keys).
+- On success the Server creates the Authentication Context (§1), the Connection becomes Authenticated, and stream limits are raised (§8.2).
+- On an Authenticated Connection a further AUTH_REQUEST is a protocol violation: the Account of a Connection never changes.
+- Failure is uniform: AUTH_RESULT carries no reason, and the Server MUST NOT reveal whether the Account exists. The Server SHOULD make the response time independent of the reason.
+- The Server limits failed attempts per Connection and closes the Connection when the limit is reached (PB009).
 
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
@@ -355,6 +422,9 @@ Collected from all sections; consolidated in Tier PJ.
 - The Server stays silent until CLIENT_HELLO, and the Client sends nothing before the Server key is trusted (§9.3, §10.1).
 - No implementation name or version is sent, so a scanner cannot select targets by software version (§10.3).
 - Messages of unknown types close the Connection; new behaviour is possible only through negotiated capabilities (§11.4).
+- User authentication is bound to the Connection by the TLS exporter, so a signature cannot be replayed or relayed (§12.3).
+- No key probing and uniform failures prevent enumeration of Accounts and authorized keys (§12.2, §12.4).
+- No passwords: nothing a phishing or compromised Server could capture and reuse (§12.1).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -365,3 +435,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-05 (2026-10-11): Server Identity and first-contact trust (§9).
 - draft-06 (2026-10-11): HELLO and handshake sequence (§10).
 - draft-07 (2026-10-11): negotiation and extension rules (§11); current draft wire version 0xFF000001.
+- draft-08 (2026-10-11): user authentication (§12).

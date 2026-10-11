@@ -15,7 +15,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PB005  server identity and first-contact trust ✅ 2026-10-11
 - [x] PB006  HELLO and handshake sequence ✅ 2026-10-11
 - [x] PB007  version and capability negotiation, extension rules ✅ 2026-10-11
-- [ ] PB008  user authentication with channel binding
+- [x] PB008  user authentication with channel binding ✅ 2026-10-11
 - [ ] PB009  errors, timeouts, resource limits
 
 # 3	Tier PC — Terminal Channel

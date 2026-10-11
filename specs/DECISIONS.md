@@ -55,6 +55,8 @@ Do not create differences for the sake of differences.
 - ❓ Post-quantum or hybrid Server Identity keys (e.g. ML-DSA).
 - ❓ CA model with X.509 certificates as an alternative to TOFU.
 - ✅ 2026-10-10 User authentication happens at the STPT application layer after the TLS handshake. The client proves possession of its key by signing a value obtained from the TLS exporter of the current Connection (channel binding), so the proof cannot be reused on another Connection.
+- ✅ 2026-10-11 User authentication: only Ed25519 public keys; one-step AUTH_REQUEST with a signature over a CBOR structure containing a TLS exporter value (label `EXPORTER-STPT-user-auth`); no key probing; uniform failure; the Account of a Connection never changes (PROTOCOL.md §12).
+- ✅ 2026-10-11 No password authentication. To be reconsidered only on user demand, as a capability.
 - Short-lived certificates, CA: promising, not required for the first MVP. Hybrid post-quantum key exchange: see §5.
 - Authorization of Session attach and of client file system operations must be defined explicitly.
 - The server never gets access to client files merely because a Connection exists.
@@ -113,7 +115,7 @@ Next experiment:
 - ✅ 2026-10-11 Framing: QUIC varint length + one CBOR message `[type, {int => any}]`; deterministic encoding, strict receiver rules; bidirectional streams only; bulk data always inside framed messages, no raw byte streams (PROTOCOL.md §7).
 - ✅ 2026-10-11 Negotiation and extensions: draft wire versions 0xFF000000 + N (current 0xFF000001); the Server selects the highest common final, else common draft version; capabilities are a map id → parameters, offered by the Client and selected by the Server; one message type space with core, capability and private ranges; unknown message types close the Connection; GREASE values reserved (PROTOCOL.md §11).
 - ✅ 2026-10-11 Server identity and first-contact trust (§6). Key rotation: ❓ §6.
-- ❓ User authentication methods, mapping to OS accounts, access rights.
+- ✅ 2026-10-11 User authentication methods (§6). ❓ Access rights within an Account (Tier PI).
 - ❓ Session ID, ownership, lifetimes, attach/detach, concurrent access.
 - ❓ Resource limits, timeouts, error handling, DoS protection.
 - ❓ How a command inside the remote shell reaches the client without breaking trust boundaries.
