@@ -14,7 +14,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PB004  control stream ✅ 2026-10-11
 - [x] PB005  server identity and first-contact trust ✅ 2026-10-11
 - [x] PB006  HELLO and handshake sequence ✅ 2026-10-11
-- [ ] PB007  version and capability negotiation, extension rules
+- [x] PB007  version and capability negotiation, extension rules ✅ 2026-10-11
 - [ ] PB008  user authentication with channel binding
 - [ ] PB009  errors, timeouts, resource limits
 

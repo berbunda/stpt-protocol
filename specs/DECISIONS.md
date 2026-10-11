@@ -111,7 +111,7 @@ Next experiment:
 # 11	Open questions before protocol work
 - ✅ 2026-10-10 Message encoding: CBOR (RFC 8949) with CDDL schemas (RFC 8610).
 - ✅ 2026-10-11 Framing: QUIC varint length + one CBOR message `[type, {int => any}]`; deterministic encoding, strict receiver rules; bidirectional streams only; bulk data always inside framed messages, no raw byte streams (PROTOCOL.md §7).
-- ❓ Message type allocation and extension rules: PB007. (Protocol version model: ✅ 2026-10-11, §9.)
+- ✅ 2026-10-11 Negotiation and extensions: draft wire versions 0xFF000000 + N (current 0xFF000001); the Server selects the highest common final, else common draft version; capabilities are a map id → parameters, offered by the Client and selected by the Server; one message type space with core, capability and private ranges; unknown message types close the Connection; GREASE values reserved (PROTOCOL.md §11).
 - ✅ 2026-10-11 Server identity and first-contact trust (§6). Key rotation: ❓ §6.
 - ❓ User authentication methods, mapping to OS accounts, access rights.
 - ❓ Session ID, ownership, lifetimes, attach/detach, concurrent access.

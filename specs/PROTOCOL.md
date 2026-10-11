@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-06 (2026-10-11). Changes: see Document history.
+Specification version: draft-07 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -258,7 +258,7 @@ Type values: PB007.
 client-hello = [
   type: CLIENT_HELLO,
   body: {
-    0 => [+ uint],                 ; supported wire versions, most preferred first (§5)
+    0 => [+ uint],                 ; supported wire versions (§5, §11.1)
     ? 1 => capabilities,           ; offered capabilities (PB007)
     ? 2 => limits,                 ; receiver limits of the Client (PB009)
     * int => any,
@@ -282,6 +282,60 @@ server-hello = [
 ## 10.3	No implementation identification
 The protocol carries no implementation name or software version. Endpoints MUST NOT send such data in any message or extension field. Interoperability is determined by the wire version and capabilities only.
 
+# 11	Negotiation and extension rules
+
+## 11.1	Wire versions
+| Range | Use |
+|---|---|
+| 0 | reserved (§5) |
+| 0x00000001–0x7FFFFFFF | final versions |
+| 0x80000000–0xFEFFFFFF | reserved |
+| 0xFF000000–0xFFFFFFFF | draft versions: 0xFF000000 + N |
+
+- N increments with every incompatible change of the wire format, not with every specification version. Current draft wire version: 0xFF000001.
+- The Server selects the highest final version offered by both Endpoints; if there is none, the highest common draft version. Otherwise negotiation fails (§10.2).
+- The Server MUST select a version from the CLIENT_HELLO list and MUST NOT select a GREASE value (§11.5).
+
+## 11.2	Capabilities
+```
+capabilities = { * uint => any }   ; capability id => parameters
+```
+- The Client offers capabilities in CLIENT_HELLO; the Server selects a subset in SERVER_HELLO.
+- The Server MUST NOT select a capability that was not offered. It MAY narrow the parameters within what was offered, as the capability definition allows.
+- The Server ignores unknown capability ids and does not select them.
+- A capability is in effect for the whole Connection only if the Server selected it.
+- Capability ids: 0 is reserved; 0x00000001–0xEFFFFFFF are assigned by this specification; 0xF0000000 and above are for private and experimental use.
+
+## 11.3	Message types
+| Range | Use |
+|---|---|
+| 0 | reserved |
+| 0x0001–0x3FFF | core protocol |
+| 0x4000–0xEFFFFFFF | messages introduced by capabilities |
+| 0xF0000000 and above | private and experimental use, only with a negotiated private capability |
+
+Assigned core types:
+| Type | Name | Defined in |
+|---|---|---|
+| 1 | CLIENT_HELLO | §10.2 |
+| 2 | SERVER_HELLO | §10.2 |
+| 3 | CHANNEL_OPEN | §8.3 |
+
+Error and close messages: PB009.
+
+## 11.4	Extension rules
+- A capability defines its id, parameters, messages, fields and channel kinds. An Endpoint MUST NOT send any of them unless the capability is in effect.
+- A message of an unknown type, or of a type not in effect, is a protocol violation: the receiver MUST close the Connection (§0.2).
+- Unknown keys in a message body are ignored (§7.3); unknown capability ids are ignored (§11.2).
+- A capability MUST NOT lower the security of the protocol (§0.1).
+
+## 11.5	GREASE
+To keep receivers tolerant of unknown values (in the manner of RFC 8701), the following values are reserved and never assigned:
+- capability ids of the form 0x?A?A (0x0A0A, 0x1A1A, …, 0xFAFA);
+- wire versions of the form 0x?A?A?A?A (0x0A0A0A0A, …, 0xFAFAFAFA).
+
+A Client MAY include such values in CLIENT_HELLO. A Server MUST ignore them and MUST NOT select them.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -300,6 +354,7 @@ Collected from all sections; consolidated in Tier PJ.
 - Ed25519 is not secure against a quantum attacker; post-quantum Server Identity keys are an open question (DECISIONS.md §6).
 - The Server stays silent until CLIENT_HELLO, and the Client sends nothing before the Server key is trusted (§9.3, §10.1).
 - No implementation name or version is sent, so a scanner cannot select targets by software version (§10.3).
+- Messages of unknown types close the Connection; new behaviour is possible only through negotiated capabilities (§11.4).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -309,3 +364,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-04 (2026-10-11): control Channel and Channel opening (§8).
 - draft-05 (2026-10-11): Server Identity and first-contact trust (§9).
 - draft-06 (2026-10-11): HELLO and handshake sequence (§10).
+- draft-07 (2026-10-11): negotiation and extension rules (§11); current draft wire version 0xFF000001.
