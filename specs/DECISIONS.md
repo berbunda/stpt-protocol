@@ -85,6 +85,9 @@ Keystroke recording is not a reliable log of executed shell commands; secret han
 
 # 9	Versioning and terminology
 - Application version, wire protocol version, Tier and Gate are different entities.
+- ✅ 2026-10-11 Requirements language BCP 14 (RFC 2119, RFC 8174); security requirements only as MUST / MUST NOT; OPTIONAL features never lower security; peer input untrusted, violations fail closed (PROTOCOL.md §0).
+- ✅ 2026-10-11 Wire protocol version is a single integer; optional features via capabilities; draft versions disjoint from final; no fallback to a lower version; deprecated versions are never offered (PROTOCOL.md §5).
+- ❓ Whether the ALPN token carries the version (visible in cleartext ClientHello): decided in PB001.
 - ✅ 2026-10-11 The roadmap is split into two tracks: protocol (P, docs/ROADMAP.md) and realisation (R, stpt/docs/ROADMAP.md). R items depend on P items explicitly; the protocol is specified ahead of the implementation.
 - Tiers, items and gates: see docs/RULES.md §1.4, docs/ROADMAP.md, stpt/docs/ROADMAP.md, docs/GATES.md.
 
@@ -102,7 +105,7 @@ Next experiment:
 
 # 11	Open questions before protocol work
 - ✅ 2026-10-10 Message encoding: CBOR (RFC 8949) with CDDL schemas (RFC 8610).
-- ❓ Frame format, message types, protocol version and extension rules.
+- ❓ Frame format, message types and extension rules. (Protocol version model: ✅ 2026-10-11, §9.)
 - ❓ Server identity, first-contact trust, key rotation.
 - ❓ User authentication methods, mapping to OS accounts, access rights.
 - ❓ Session ID, ownership, lifetimes, attach/detach, concurrent access.

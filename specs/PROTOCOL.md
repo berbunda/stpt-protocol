@@ -1,6 +1,21 @@
 # STPT Protocol Specification
 
 Status: draft.
+Specification version: draft-00 (2026-10-11). Changes: see Document history.
+
+# 0	Conventions
+
+## 0.1	Requirements language
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals, as shown here.
+
+Within this specification:
+- Security requirements are stated with MUST or MUST NOT. SHOULD is used for them only together with the conditions under which deviation is acceptable and its consequences.
+- An OPTIONAL feature MUST NOT lower the security of the protocol below that of an implementation without it.
+
+## 0.2	Conformance
+- An implementation conforms to this specification only if it satisfies every MUST and MUST NOT applicable to its role (Client, Server or both).
+- All data received from a peer is untrusted and MUST be validated before use.
+- Fail closed: on a protocol violation by the peer, an Endpoint MUST reject the request or close the Connection; it MUST NOT continue on a best-effort guess. Error handling details: PB007, PB009.
 
 # 1	Terminology
 - **Endpoint** — an implementation instance of the STPT protocol. Within a Connection it acts in exactly one role: Client or Server.
@@ -82,3 +97,22 @@ The Server holds the authoritative Session state.
 - Each Endpoint is the authority for its own Connection state.
 - The Client requests attach, detach and termination; the Server authorizes them.
 - The Server alone sets and applies Retention Policy and may terminate a Session by its own policy.
+
+# 5	Versioning
+- The specification version, the wire protocol version and the application version of an implementation are independent.
+- The wire protocol version is a single unsigned integer. Optional features are negotiated as capabilities, not as minor versions (PB007).
+- Version 0 is reserved and MUST NOT be negotiated.
+- Draft wire versions come from a range disjoint from final versions, so a draft and a final implementation never agree on a version silently. While this specification is draft, only draft versions are used. Ranges and encoding: PB007.
+- Version negotiation takes place inside the TLS-protected Connection (PB006, PB007).
+- An Endpoint MUST NOT retry with a lower version after a failed handshake or negotiation (downgrade protection).
+- A version with a known weakness is declared deprecated; an Endpoint MUST NOT offer or accept a deprecated version.
+- Each change of the specification increments the specification version and is recorded in Document history.
+
+# Security Considerations
+Collected from all sections; consolidated in Tier PJ.
+- Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
+- Peer input is untrusted; protocol violations fail closed (§0.2).
+- Version downgrade is prevented by negotiation inside TLS and by the no-fallback rule (§5).
+
+# Document history
+- draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
