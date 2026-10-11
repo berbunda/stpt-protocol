@@ -30,6 +30,7 @@ Do not create differences for the sake of differences.
 - ✅ 2026-10-11 A Session is a server-side execution context owned by an Account, not only a terminal; the terminal is one of its Channels.
 - ✅ 2026-10-11 Persistence is not a kind of Session: every Session is independent of Connections, and its life without an Attachment is set by the server Retention Policy. A new Connection may attach to it after authorization.
 - ✅ 2026-10-11 Channel (logical service: control, terminal, files, other) and Stream (transport unit) are separate terms; the mapping is defined in PB003/PB004.
+- ✅ 2026-10-11 State model (PROTOCOL.md §3): Authenticated is a Connection state, not only a property; until it only the control Channel is available. A Session has an Exited state that keeps the exit status for later Attachments under Retention Policy.
 - ✅ 2026-10-11 A Connection is not bound to a network path: QUIC connection migration keeps the Connection; after Connection loss a new Connection is required.
 - SSH already multiplexes channels. The QUIC advantage is, among others, independent loss recovery per stream.
 

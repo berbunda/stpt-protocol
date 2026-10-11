@@ -4,7 +4,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 
 # 1	Tier PA — Foundation
 - [x] PA001  terminology and concept model ✅ 2026-10-11
-- [ ] PA002  state model and responsibility boundaries
+- [x] PA002  state model and responsibility boundaries ✅ 2026-10-11
 - [ ] PA003  conformance language, specification and wire protocol versioning
 
 # 2	Tier PB — Transport / Connection Establishment
