@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-00 (2026-10-11). Changes: see Document history.
+Specification version: draft-01 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -108,11 +108,46 @@ The Server holds the authoritative Session state.
 - A version with a known weakness is declared deprecated; an Endpoint MUST NOT offer or accept a deprecated version.
 - Each change of the specification increments the specification version and is recorded in Document history.
 
+# 6	Transport profile
+Each Connection is one QUIC connection secured by TLS 1.3.
+
+## 6.1	QUIC
+- Endpoints MUST support QUIC version 1 (RFC 9000, RFC 9001, RFC 9002). Other QUIC versions MAY be used if both Endpoints support them.
+- An Endpoint MAY migrate the Connection to a new network path; a Server MAY disable active migration (`disable_active_migration`). Migration does not change the Connection state (§3.1).
+- QUIC unreliable datagrams (RFC 9221) are not used.
+- Idle timeout and resource limits: PB009.
+
+## 6.2	TLS 1.3
+- Cipher suites: Endpoints MUST support TLS_AES_128_GCM_SHA256 and TLS_CHACHA20_POLY1305_SHA256 and SHOULD support TLS_AES_256_GCM_SHA384. Other cipher suites MUST NOT be negotiated.
+- Key exchange: Endpoints MUST support X25519 and SHOULD support the hybrid group X25519MLKEM768. If both Endpoints support X25519MLKEM768, it MUST be selected. Other groups MUST NOT be negotiated.
+- Server authentication: the Server MUST authenticate in the TLS handshake with the key of its Server Identity. The Client MUST abort the handshake if verification fails. Credential form and verification: PB005.
+- Client certificates are not used: the Server MUST NOT request one, and the Client MUST NOT send one. User authentication takes place after the handshake and is bound to the Connection by the TLS exporter (PB008).
+- Session resumption MAY be used, only with the `psk_dhe_ke` mode. Resumption MUST NOT restore an Authentication Context: user authentication is performed on every Connection.
+
+## 6.3	ALPN
+- The ALPN token is `stpt` (0x73 0x74 0x70 0x74). The Client MUST offer it as its only protocol; the Server MUST select it or abort the handshake with `no_application_protocol`.
+- The token does not carry the wire protocol version; the version is negotiated inside the Connection (§5, PB007). The token changes only if the HELLO encoding changes incompatibly.
+
+## 6.4	SNI and ECH
+- If the Server is addressed by a DNS name, the Client SHOULD send it in the `server_name` extension. An IP address MUST NOT be sent as SNI (RFC 6066).
+- SNI and ALPN travel in cleartext unless Encrypted Client Hello (ECH) is used. The Client SHOULD use ECH if an ECH configuration for the Server is available (e.g. a DNS HTTPS record, RFC 9460).
+- ECH rejection is handled as defined by the ECH specification. A Client configured to use ECH for a Server MUST NOT retry the Connection without ECH.
+- Server-side ECH is OPTIONAL.
+
+## 6.5	0-RTT
+- The Client MUST NOT send 0-RTT data. The Server MUST NOT accept 0-RTT data and MUST NOT issue session tickets that allow early data.
+- Reason: 0-RTT data is replayable and lacks forward secrecy; saving one round trip does not justify it. A later version MAY allow it through a capability (PB007).
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
 - Peer input is untrusted; protocol violations fail closed (§0.2).
 - Version downgrade is prevented by negotiation inside TLS and by the no-fallback rule (§5).
+- SNI and ALPN are visible to observers without ECH; the ALPN token reveals the protocol but not its version (§6.3, §6.4).
+- The hybrid key exchange X25519MLKEM768 protects recorded traffic against future quantum attacks (§6.2).
+- 0-RTT is forbidden: no replayable application data (§6.5).
+- Resumption never restores user authentication (§6.2).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
+- draft-01 (2026-10-11): transport profile: QUIC, TLS 1.3, ALPN, SNI/ECH, 0-RTT (§6).

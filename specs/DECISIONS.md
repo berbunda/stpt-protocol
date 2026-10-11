@@ -40,7 +40,8 @@ Do not create differences for the sake of differences.
 - No STPT banner or any application data is sent before the cryptographic channel is established.
 - This does not make the protocol invisible: IP addresses, traffic metadata and QUIC itself remain observable. QUIC Initial packets are only obfuscated (their keys are derivable by anyone).
 - ✅ 2026-10-10 ALPN and SNI travel in cleartext in the ClientHello. Where this exposes too much, Encrypted Client Hello (ECH) is to be used. Server-side ECH is restricted by gate G1.
-- ✅ 2026-10-10 No application data in 0-RTT (replayable). At most HELLO; never terminal input, attach, file or other state-changing operations.
+- ✅ 2026-10-11 No 0-RTT at all, not even HELLO (supersedes 2026-10-10 "at most HELLO"): replay risk and capability exposure outweigh one saved round trip. May be relaxed later through a capability (PROTOCOL.md §6.5).
+- ✅ 2026-10-11 TLS 1.3 profile: AES-128-GCM and ChaCha20-Poly1305 mandatory; key exchange X25519 mandatory, hybrid X25519MLKEM768 recommended and preferred; no client certificates; resumption only with (EC)DHE and never restores user authentication (PROTOCOL.md §6.2).
 - QUIC connection migration (address change) and Session recovery after full connection loss are different mechanisms; both are in scope.
 - ❓ Default port. Options:
   - a dedicated UDP port (note: 22000 is already used by Syncthing, including QUIC);
@@ -50,7 +51,7 @@ Do not create differences for the sake of differences.
 - No custom cryptographic algorithms; only proven TLS and cryptographic implementations.
 - Server identity: TOFU model with SSH known_hosts-like UX; connection refused on unexpected identity change.
 - ✅ 2026-10-10 User authentication happens at the STPT application layer after the TLS handshake. The client proves possession of its key by signing a value obtained from the TLS exporter of the current Connection (channel binding), so the proof cannot be reused on another Connection.
-- Short-lived certificates, CA, hybrid post-quantum key exchange: promising, not required for the first MVP.
+- Short-lived certificates, CA: promising, not required for the first MVP. Hybrid post-quantum key exchange: see §5.
 - Authorization of Session attach and of client file system operations must be defined explicitly.
 - The server never gets access to client files merely because a Connection exists.
 - ❓ Security model of mounting a client directory on the server (reverse mount) requires a separate analysis.
@@ -87,7 +88,7 @@ Keystroke recording is not a reliable log of executed shell commands; secret han
 - Application version, wire protocol version, Tier and Gate are different entities.
 - ✅ 2026-10-11 Requirements language BCP 14 (RFC 2119, RFC 8174); security requirements only as MUST / MUST NOT; OPTIONAL features never lower security; peer input untrusted, violations fail closed (PROTOCOL.md §0).
 - ✅ 2026-10-11 Wire protocol version is a single integer; optional features via capabilities; draft versions disjoint from final; no fallback to a lower version; deprecated versions are never offered (PROTOCOL.md §5).
-- ❓ Whether the ALPN token carries the version (visible in cleartext ClientHello): decided in PB001.
+- ✅ 2026-10-11 The ALPN token is `stpt` without a version; the version is negotiated inside TLS (PROTOCOL.md §6.3).
 - ✅ 2026-10-11 The roadmap is split into two tracks: protocol (P, docs/ROADMAP.md) and realisation (R, stpt/docs/ROADMAP.md). R items depend on P items explicitly; the protocol is specified ahead of the implementation.
 - Tiers, items and gates: see docs/RULES.md §1.4, docs/ROADMAP.md, stpt/docs/ROADMAP.md, docs/GATES.md.
 

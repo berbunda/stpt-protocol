@@ -8,7 +8,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PA003  conformance language, specification and wire protocol versioning ✅ 2026-10-11
 
 # 2	Tier PB — Transport / Connection Establishment
-- [ ] PB001  QUIC / TLS 1.3 profile: ALPN, SNI/ECH, 0-RTT policy
+- [x] PB001  QUIC / TLS 1.3 profile: ALPN, SNI/ECH, 0-RTT policy ✅ 2026-10-11
 - [ ] PB002  default port
 - [ ] PB003  message encoding and framing (CBOR / CDDL)
 - [ ] PB004  control stream
