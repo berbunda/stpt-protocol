@@ -117,7 +117,7 @@ Next experiment:
 - ✅ 2026-10-11 Server identity and first-contact trust (§6). Key rotation: ❓ §6.
 - ✅ 2026-10-11 User authentication methods (§6). ❓ Access rights within an Account (Tier PI).
 - ❓ Session ID, ownership, lifetimes, attach/detach, concurrent access.
-- ❓ Resource limits, timeouts, error handling, DoS protection.
+- ✅ 2026-10-11 Errors via QUIC CONNECTION_CLOSE / RESET_STREAM codes, no error message; no reason text before authentication; timeouts HELLO 10 s, authentication 60 s, idle 60 s with client PING every 15 s; limits announced in HELLO (message size ≥ 65535), nesting depth 16, 6 auth attempts; QUIC Retry and limits on unauthenticated Connections (PROTOCOL.md §13).
 - ❓ How a command inside the remote shell reaches the client without breaking trust boundaries.
 - ❓ Audit format and security, including password and secret input.
 - ❓ Interoperability of independent implementations and test vectors.

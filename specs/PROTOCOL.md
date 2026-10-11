@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-08 (2026-10-11). Changes: see Document history.
+Specification version: draft-09 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -15,15 +15,15 @@ Within this specification:
 ## 0.2	Conformance
 - An implementation conforms to this specification only if it satisfies every MUST and MUST NOT applicable to its role (Client, Server or both).
 - All data received from a peer is untrusted and MUST be validated before use.
-- Fail closed: on a protocol violation by the peer, an Endpoint MUST reject the request or close the Connection; it MUST NOT continue on a best-effort guess. Error handling details: PB007, PB009.
+- Fail closed: on a protocol violation by the peer, an Endpoint MUST reject the request or close the Connection; it MUST NOT continue on a best-effort guess. Error handling details: §11, §13.
 
 # 1	Terminology
 - **Endpoint** — an implementation instance of the STPT protocol. Within a Connection it acts in exactly one role: Client or Server.
 - **Client** — the Endpoint role that initiates a Connection.
 - **Server** — the Endpoint role that accepts Connections and hosts Sessions.
-- **Connection** — a secure transport connection between a Client and a Server. A Connection is not bound to a network path: an address change of an Endpoint does not create a new Connection. Mapping to QUIC and TLS 1.3: PB001.
+- **Connection** — a secure transport connection between a Client and a Server. A Connection is not bound to a network path: an address change of an Endpoint does not create a new Connection. Mapping to QUIC and TLS 1.3: §6.
 - **Channel** — a logical service within a Connection: control, terminal, files or another service.
-- **Stream** — a transport unit within a Connection carrying data of one Channel. Mapping of Channels to Streams: PB003, PB004.
+- **Stream** — a transport unit within a Connection carrying data of one Channel. Mapping of Channels to Streams: §7, §8.
 - **Identity** — a long-term cryptographic identity. A **Server Identity** identifies a Server; a **User Identity** identifies a user.
 - **Account** — an operating system account on the Server.
 - **Authentication Context** — the result of user authentication on a Connection: authenticated User Identity, mapped Account and granted permissions.
@@ -41,14 +41,14 @@ Client ──── Connection ──── Server
                      (Server hosts 0..N Sessions)
 ```
 - A Connection has exactly one Client and one Server.
-- A Connection has at most one Authentication Context, established by user authentication (PB008).
+- A Connection has at most one Authentication Context, established by user authentication (§12).
 - A Connection carries Channels; each Channel uses one or more Streams.
 - A Server hosts zero or more Sessions; each Session is owned by exactly one Account.
 - An Attachment links one Connection with one Session and requires an Authentication Context on that Connection. The number of Attachments per Connection and per Session: PD003.
 - The end of a Connection ends its Channels and Attachments, but not its Sessions. A Session ends by termination or by Retention Policy (§3.2, PD002).
 
 # 3	State model
-States are abstract; their wire representation is defined in later items (PB003, PD).
+States are abstract; their wire representation is defined in §7 and later sections (PC, PD).
 
 ## 3.1	Connection
 Each Endpoint keeps its own Connection state.
@@ -100,10 +100,10 @@ The Server holds the authoritative Session state.
 
 # 5	Versioning
 - The specification version, the wire protocol version and the application version of an implementation are independent.
-- The wire protocol version is a single unsigned integer. Optional features are negotiated as capabilities, not as minor versions (PB007).
+- The wire protocol version is a single unsigned integer. Optional features are negotiated as capabilities, not as minor versions (§11).
 - Version 0 is reserved and MUST NOT be negotiated.
-- Draft wire versions come from a range disjoint from final versions, so a draft and a final implementation never agree on a version silently. While this specification is draft, only draft versions are used. Ranges and encoding: PB007.
-- Version negotiation takes place inside the TLS-protected Connection (PB006, PB007).
+- Draft wire versions come from a range disjoint from final versions, so a draft and a final implementation never agree on a version silently. While this specification is draft, only draft versions are used. Ranges and encoding: §11.
+- Version negotiation takes place inside the TLS-protected Connection (§10, §11).
 - An Endpoint MUST NOT retry with a lower version after a failed handshake or negotiation (downgrade protection).
 - A version with a known weakness is declared deprecated; an Endpoint MUST NOT offer or accept a deprecated version.
 - Each change of the specification increments the specification version and is recorded in Document history.
@@ -115,18 +115,18 @@ Each Connection is one QUIC connection secured by TLS 1.3.
 - Endpoints MUST support QUIC version 1 (RFC 9000, RFC 9001, RFC 9002). Other QUIC versions MAY be used if both Endpoints support them.
 - An Endpoint MAY migrate the Connection to a new network path; a Server MAY disable active migration (`disable_active_migration`). Migration does not change the Connection state (§3.1).
 - QUIC unreliable datagrams (RFC 9221) are not used.
-- Idle timeout and resource limits: PB009.
+- Idle timeout and resource limits: §13.
 
 ## 6.2	TLS 1.3
 - Cipher suites: Endpoints MUST support TLS_AES_128_GCM_SHA256 and TLS_CHACHA20_POLY1305_SHA256 and SHOULD support TLS_AES_256_GCM_SHA384. Other cipher suites MUST NOT be negotiated.
 - Key exchange: Endpoints MUST support X25519 and SHOULD support the hybrid group X25519MLKEM768. If both Endpoints support X25519MLKEM768, it MUST be selected. Other groups MUST NOT be negotiated.
-- Server authentication: the Server MUST authenticate in the TLS handshake with the key of its Server Identity. The Client MUST abort the handshake if verification fails. Credential form and verification: PB005.
-- Client certificates are not used: the Server MUST NOT request one, and the Client MUST NOT send one. User authentication takes place after the handshake and is bound to the Connection by the TLS exporter (PB008).
+- Server authentication: the Server MUST authenticate in the TLS handshake with the key of its Server Identity. The Client MUST abort the handshake if verification fails. Credential form and verification: §9.
+- Client certificates are not used: the Server MUST NOT request one, and the Client MUST NOT send one. User authentication takes place after the handshake and is bound to the Connection by the TLS exporter (§12).
 - Session resumption MAY be used, only with the `psk_dhe_ke` mode. Resumption MUST NOT restore an Authentication Context: user authentication is performed on every Connection.
 
 ## 6.3	ALPN
 - The ALPN token is `stpt` (0x73 0x74 0x70 0x74). The Client MUST offer it as its only protocol; the Server MUST select it or abort the handshake with `no_application_protocol`.
-- The token does not carry the wire protocol version; the version is negotiated inside the Connection (§5, PB007). The token changes only if the HELLO encoding changes incompatibly.
+- The token does not carry the wire protocol version; the version is negotiated inside the Connection (§5, §11). The token changes only if the HELLO encoding changes incompatibly.
 
 ## 6.4	SNI and ECH
 - If the Server is addressed by a DNS name, the Client SHOULD send it in the `server_name` extension. An IP address MUST NOT be sent as SNI (RFC 6066).
@@ -136,7 +136,7 @@ Each Connection is one QUIC connection secured by TLS 1.3.
 
 ## 6.5	0-RTT
 - The Client MUST NOT send 0-RTT data. The Server MUST NOT accept 0-RTT data and MUST NOT issue session tickets that allow early data.
-- Reason: 0-RTT data is replayable and lacks forward secrecy; saving one round trip does not justify it. A later version MAY allow it through a capability (PB007).
+- Reason: 0-RTT data is replayable and lacks forward secrecy; saving one round trip does not justify it. A later version MAY allow it through a capability (§11).
 
 ## 6.6	Port
 - The default Server port is UDP 843. A Server MAY listen on another port; a Client MUST allow the port to be specified.
@@ -148,7 +148,7 @@ Each Connection is one QUIC connection secured by TLS 1.3.
 ## 7.1	Streams
 - Channels use bidirectional QUIC streams only. Endpoints MUST set the transport parameter `initial_max_streams_uni` to 0.
 - Every stream carries a sequence of frames (§7.2) in each direction; no stream carries unframed bytes.
-- The control Channel and its stream: PB004. The first message on any other stream identifies its Channel: PB004, PC001.
+- The control Channel and its stream: §8. The first message on any other stream identifies its Channel: §8, PC001.
 
 ## 7.2	Frame
 ```
@@ -157,7 +157,7 @@ frame = length payload
   payload : exactly one CBOR data item, a message (§7.3)
 ```
 - `length` MUST NOT be 0.
-- A receiver MUST check `length` against its message size limit before buffering the payload. Every Endpoint MUST accept messages of at least 65535 bytes; larger limits: PB007, PB009.
+- A receiver MUST check `length` against its message size limit before buffering the payload. Every Endpoint MUST accept messages of at least 65535 bytes; larger limits: §11, §13.
 - A frame MAY span several QUIC STREAM frames. The end of a stream inside a frame is a protocol violation.
 - Bulk data (terminal I/O, files) travels as CBOR byte strings inside messages; a sender splits it into messages within the limit.
 
@@ -169,8 +169,8 @@ message = [
   body: { * int => any },  ; fields with integer keys, defined per type
 ]
 ```
-- Message types and fields are defined by the sections that use them. Type allocation, unknown types and extension rules: PB007.
-- A receiver MUST ignore unknown keys in `body`. A field whose ignoring would affect security MUST be sent only after the capability that defines it has been negotiated (PB007).
+- Message types and fields are defined by the sections that use them. Type allocation, unknown types and extension rules: §11.
+- A receiver MUST ignore unknown keys in `body`. A field whose ignoring would affect security MUST be sent only after the capability that defines it has been negotiated (§11).
 
 ## 7.4	CBOR rules
 - A sender MUST use deterministic encoding (RFC 8949 §4.2.1): preferred serialization, definite lengths, sorted map keys.
@@ -180,17 +180,17 @@ message = [
   - contains duplicate map keys;
   - contains tags, floating-point numbers, or simple values other than `false`, `true` and `null`, unless the message definition allows them;
   - contains a text string that is not valid UTF-8;
-  - exceeds the nesting depth limit of the receiver (PB009);
+  - exceeds the nesting depth limit of the receiver (§13);
   - does not match the CDDL of its type.
 - A receiver MAY reject other non-deterministic encodings.
-- Rejection is a protocol violation handled per §0.2 and PB009.
+- Rejection is a protocol violation handled per §0.2 and §13.
 
 # 8	Control Channel and Channel opening
 
 ## 8.1	Control stream
-- The control Channel uses the first client-initiated bidirectional stream (stream ID 0). The Client opens it immediately after the handshake; its first message is HELLO (PB006).
-- The control stream lives as long as the Connection. If either direction of it ends (FIN) or is reset (RESET_STREAM, STOP_SENDING), the Endpoint MUST close the Connection with an error (PB009).
-- The control Channel carries connection-level messages: HELLO and negotiation (PB006, PB007), user authentication (PB008), Session operations (PD), errors and close (PB009).
+- The control Channel uses the first client-initiated bidirectional stream (stream ID 0). The Client opens it immediately after the handshake; its first message is HELLO (§10).
+- The control stream lives as long as the Connection. If either direction of it ends (FIN) or is reset (RESET_STREAM, STOP_SENDING), the Endpoint MUST close the Connection with an error (§13).
+- The control Channel carries connection-level messages: HELLO and negotiation (§10, §11), user authentication (§12), Session operations (PD).
 - A message not permitted on the control stream, or not permitted in the current Connection state (§3.1), is a protocol violation.
 - A sender SHOULD give the control stream priority over other streams.
 
@@ -204,14 +204,14 @@ Until the Connection is Authenticated only the control Channel is available (§3
 Every Channel other than control is opened on a new bidirectional stream. The opener's first message on it is CHANNEL_OPEN:
 ```
 channel-open = [
-  type: CHANNEL_OPEN,      ; value: PB007
+  type: CHANNEL_OPEN,      ; value 3 (§11.3)
   body: {
     0 => uint,             ; channel kind (terminal: PC001; others: later Tiers)
     * int => any,          ; parameters defined by the channel kind
   },
 ]
 ```
-- The receiver checks the kind and the Authentication Context. To reject, it resets the stream and sends STOP_SENDING with an error code (PB009); the Connection stays open.
+- The receiver checks the kind and the Authentication Context. To reject, it resets the stream and sends STOP_SENDING with CHANNEL_REJECTED (§13.2); the Connection stays open.
 - After acceptance the stream carries messages of that channel kind only. Further streams of the same Channel, if any, are defined by its kind.
 
 # 9	Server Identity and first-contact trust
@@ -244,23 +244,23 @@ Client                                         Server
   |-- CLIENT_HELLO (stream 0) ------------------>|
   |<--------------------------------- SERVER_HELLO|
   |   Connection Established (§3.1)              |
-  |-- user authentication (PB008) -------------->|
+  |-- user authentication (§12) -------------->|
 ```
 - The Client sends CLIENT_HELLO as the first message on the control stream (§8.1) after the Server key is trusted, and sends nothing else until it receives SERVER_HELLO.
-- The Server MUST NOT send any STPT message before it receives CLIENT_HELLO. It answers with SERVER_HELLO, or with an error followed by Connection close (PB009).
+- The Server MUST NOT send any STPT message before it receives CLIENT_HELLO. It answers with SERVER_HELLO or closes the Connection with an error code (§13.1).
 - Each Endpoint sends exactly one HELLO per Connection. A second HELLO, or any other message in its place, is a protocol violation.
 - After SERVER_HELLO is sent (Server) or received (Client), the Connection is Established.
 - HELLO is not signed: it travels inside TLS, which protects it against modification and downgrade.
 
 ## 10.2	Messages
-Type values: PB007.
+Type values: §11.
 ```
 client-hello = [
   type: CLIENT_HELLO,
   body: {
     0 => [+ uint],                 ; supported wire versions (§5, §11.1)
-    ? 1 => capabilities,           ; offered capabilities (PB007)
-    ? 2 => limits,                 ; receiver limits of the Client (PB009)
+    ? 1 => capabilities,           ; offered capabilities (§11)
+    ? 2 => limits,                 ; receiver limits of the Client (§13)
     * int => any,
   },
 ]
@@ -269,15 +269,15 @@ server-hello = [
   type: SERVER_HELLO,
   body: {
     0 => uint,                     ; selected wire version, one of those offered
-    ? 1 => capabilities,           ; selected capabilities (PB007)
-    ? 2 => limits,                 ; receiver limits of the Server (PB009)
-    3 => [+ uint],                 ; available user authentication methods (PB008)
+    ? 1 => capabilities,           ; selected capabilities (§11)
+    ? 2 => limits,                 ; receiver limits of the Server (§13)
+    3 => [+ uint],                 ; available user authentication methods (§12)
     * int => any,
   },
 ]
 ```
-- The Server selects the version per PB007. If no offered version is acceptable, it sends an error and closes the Connection; the Client MUST NOT retry with a different version list (§5).
-- The `capabilities` and `limits` types: PB007, PB009.
+- The Server selects the version per §11. If no offered version is acceptable, it closes the Connection with VERSION_NEGOTIATION_FAILED (§13.2); the Client MUST NOT retry with a different version list (§5).
+- The `capabilities` and `limits` types: §11, §13.
 
 ## 10.3	No implementation identification
 The protocol carries no implementation name or software version. Endpoints MUST NOT send such data in any message or extension field. Interoperability is determined by the wire version and capabilities only.
@@ -323,7 +323,7 @@ Assigned core types:
 | 4 | AUTH_REQUEST | §12.2 |
 | 5 | AUTH_RESULT | §12.2 |
 
-Error and close messages: PB009.
+There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
 ## 11.4	Extension rules
 - A capability defines its id, parameters, messages, fields and channel kinds. An Endpoint MUST NOT send any of them unless the capability is in effect.
@@ -401,7 +401,59 @@ auth-signed-data = [
 - On success the Server creates the Authentication Context (§1), the Connection becomes Authenticated, and stream limits are raised (§8.2).
 - On an Authenticated Connection a further AUTH_REQUEST is a protocol violation: the Account of a Connection never changes.
 - Failure is uniform: AUTH_RESULT carries no reason, and the Server MUST NOT reveal whether the Account exists. The Server SHOULD make the response time independent of the reason.
-- The Server limits failed attempts per Connection and closes the Connection when the limit is reached (PB009).
+- The Server limits failed attempts per Connection and closes the Connection with AUTH_FAILED when the limit is reached (§13.4).
+
+# 13	Errors, timeouts and resource limits
+
+## 13.1	Error signalling
+Errors use QUIC mechanisms; there is no error message:
+- Connection error: CONNECTION_CLOSE (application variant) with an error code (§13.2). A regular close uses NO_ERROR.
+- Stream error: RESET_STREAM and STOP_SENDING with an error code; the Connection stays open.
+- Errors of individual requests (e.g. Session operations) are reported by the responses those requests define.
+- Before the Connection is Authenticated, the reason phrase of CONNECTION_CLOSE MUST be empty. Afterwards it MAY contain a short diagnostic text and MUST NOT contain secrets.
+
+## 13.2	Error codes
+| Code | Name | Scope | Meaning |
+|---|---|---|---|
+| 0 | NO_ERROR | Connection, stream | regular close |
+| 1 | PROTOCOL_VIOLATION | Connection | peer violated this specification (§0.2) |
+| 2 | INTERNAL_ERROR | Connection, stream | local failure |
+| 3 | VERSION_NEGOTIATION_FAILED | Connection | no common wire version (§11.1) |
+| 4 | AUTH_FAILED | Connection | authentication attempts exhausted (§12.4) |
+| 5 | TIMEOUT | Connection | a deadline of §13.3 expired |
+| 6 | LIMIT_EXCEEDED | Connection, stream | a limit of §13.4 exceeded |
+| 7 | CHANNEL_REJECTED | stream | CHANNEL_OPEN rejected (§8.3) |
+| 8 | SERVER_SHUTDOWN | Connection | the Server is shutting down |
+
+Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above are for private and experimental use.
+
+## 13.3	Timeouts
+| Deadline | Default | On expiry |
+|---|---|---|
+| CLIENT_HELLO received by the Server after the handshake | 10 s | Server closes with TIMEOUT |
+| Connection Authenticated after it becomes Established | 60 s | Server closes with TIMEOUT |
+| QUIC idle timeout (`max_idle_timeout`) | 60 s | Connection closed silently (RFC 9000 §10.1) |
+
+- Defaults are RECOMMENDED; a Server MAY configure other values.
+- A Client SHOULD send QUIC PING frames when the Connection has been idle for 15 s, so an idle terminal keeps its Connection. Session survival does not depend on this (§3.4).
+
+## 13.4	Resource limits
+```
+limits = {
+  ? 0 => uint,    ; maximum message size in bytes accepted by the sender of HELLO
+  * int => any,
+}
+```
+- Maximum message size: default and minimum 65535 bytes (§7.2). An Endpoint MUST NOT send a message larger than the limit announced by the peer.
+- CBOR nesting depth: every Endpoint MUST accept a depth of 16; messages defined by this specification never exceed it.
+- Account name: at most 256 bytes.
+- Failed authentication attempts per Connection: default 6; a Server MAY use a lower value.
+- A violated limit is answered with LIMIT_EXCEEDED.
+
+## 13.5	Denial of service
+- A Server SHOULD limit the number of Connections that are not yet Authenticated, in total and per source address.
+- A Server SHOULD use QUIC Retry (RFC 9000 §8.1.2) to validate client addresses under load.
+- Before authentication a Server keeps only the state needed for the handshake; Session resources are allocated only after authentication.
 
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
@@ -425,6 +477,8 @@ Collected from all sections; consolidated in Tier PJ.
 - User authentication is bound to the Connection by the TLS exporter, so a signature cannot be replayed or relayed (§12.3).
 - No key probing and uniform failures prevent enumeration of Accounts and authorized keys (§12.2, §12.4).
 - No passwords: nothing a phishing or compromised Server could capture and reuse (§12.1).
+- Before authentication errors carry no reason text (§13.1).
+- Deadlines, limits and QUIC Retry bound the resources an unauthenticated peer can consume (§13.3–§13.5).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -436,3 +490,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-06 (2026-10-11): HELLO and handshake sequence (§10).
 - draft-07 (2026-10-11): negotiation and extension rules (§11); current draft wire version 0xFF000001.
 - draft-08 (2026-10-11): user authentication (§12).
+- draft-09 (2026-10-11): errors, timeouts and resource limits (§13); references to P items replaced by section numbers.

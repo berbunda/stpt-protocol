@@ -16,7 +16,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PB006  HELLO and handshake sequence ✅ 2026-10-11
 - [x] PB007  version and capability negotiation, extension rules ✅ 2026-10-11
 - [x] PB008  user authentication with channel binding ✅ 2026-10-11
-- [ ] PB009  errors, timeouts, resource limits
+- [x] PB009  errors, timeouts, resource limits ✅ 2026-10-11
 
 # 3	Tier PC — Terminal Channel
 - [ ] PC001  terminal stream
