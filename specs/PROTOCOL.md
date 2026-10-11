@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-01 (2026-10-11). Changes: see Document history.
+Specification version: draft-02 (2026-10-11). Changes: see Document history.
 
 # 0	Conventions
 
@@ -138,6 +138,11 @@ Each Connection is one QUIC connection secured by TLS 1.3.
 - The Client MUST NOT send 0-RTT data. The Server MUST NOT accept 0-RTT data and MUST NOT issue session tickets that allow early data.
 - Reason: 0-RTT data is replayable and lacks forward secrecy; saving one round trip does not justify it. A later version MAY allow it through a capability (PB007).
 
+## 6.6	Port
+- The default Server port is UDP 843. A Server MAY listen on another port; a Client MUST allow the port to be specified.
+- The port is in the system range: on Unix-like systems an unprivileged user cannot bind it, so a local user cannot impersonate the Server on its default port. Windows has no such restriction.
+- The port is not registered with IANA. If registration yields a different number, the default changes in a later specification version.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -147,7 +152,9 @@ Collected from all sections; consolidated in Tier PJ.
 - The hybrid key exchange X25519MLKEM768 protects recorded traffic against future quantum attacks (§6.2).
 - 0-RTT is forbidden: no replayable application data (§6.5).
 - Resumption never restores user authentication (§6.2).
+- On Unix-like systems the default port is privileged, so an unprivileged local user cannot occupy it (§6.6).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
 - draft-01 (2026-10-11): transport profile: QUIC, TLS 1.3, ALPN, SNI/ECH, 0-RTT (§6).
+- draft-02 (2026-10-11): default port UDP 843 (§6.6).

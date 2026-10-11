@@ -43,9 +43,8 @@ Do not create differences for the sake of differences.
 - ✅ 2026-10-11 No 0-RTT at all, not even HELLO (supersedes 2026-10-10 "at most HELLO"): replay risk and capability exposure outweigh one saved round trip. May be relaxed later through a capability (PROTOCOL.md §6.5).
 - ✅ 2026-10-11 TLS 1.3 profile: AES-128-GCM and ChaCha20-Poly1305 mandatory; key exchange X25519 mandatory, hybrid X25519MLKEM768 recommended and preferred; no client certificates; resumption only with (EC)DHE and never restores user authentication (PROTOCOL.md §6.2).
 - QUIC connection migration (address change) and Session recovery after full connection loss are different mechanisms; both are in scope.
-- ❓ Default port. Options:
-  - a dedicated UDP port (note: 22000 is already used by Syncthing, including QUIC);
-  - sharing UDP 443 with HTTP/3 and demultiplexing by ALPN (requires a front end that routes QUIC Initials; interacts with ECH, since ALPN is then inside the encrypted inner ClientHello).
+- ✅ 2026-10-11 Default port: dedicated UDP 843 (unassigned in the IANA registry; privileged, so not bindable by unprivileged local users). Sharing UDP 443 with HTTP/3 is not the default; the port is configurable (PROTOCOL.md §6.6).
+- ❓ IANA registration of the ALPN token `stpt` (Expert Review) and of a port (system ports need IETF Review or IESG Approval, RFC 6335; a different number may be assigned): deferred until the specification is stable.
 
 # 6	Authentication and security
 - No custom cryptographic algorithms; only proven TLS and cryptographic implementations.
