@@ -23,7 +23,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PC002  PTY parameters: terminal type, size, environment ✅ 2026-10-13
 - [x] PC003  terminal I/O ✅ 2026-10-13
 - [x] PC004  terminal resize ✅ 2026-10-13
-- [ ] PC005  signals
+- [x] PC005  signals ✅ 2026-10-13
 - [ ] PC006  exit status and channel close
 
 # 4	Tier PD — Session Model

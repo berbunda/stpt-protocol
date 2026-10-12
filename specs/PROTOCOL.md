@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-13 (2026-10-13). Changes: see Document history.
+Specification version: draft-14 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -327,6 +327,7 @@ Assigned core types:
 | 8 | TERMINAL_STDERR | §14.7 |
 | 24 | TERMINAL_EOF | §14.7 |
 | 25 | TERMINAL_RESIZE | §14.8 |
+| 26 | TERMINAL_SIGNAL | §14.9 |
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -502,7 +503,7 @@ terminal-attached = [
 - Terminating a Session is not a Channel operation; it is a request on the control Channel (PD002).
 
 ## 14.4	Stream
-- A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: §14.7, §14.8, PC005, PC006) travel in-band on it.
+- A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: §14.7–§14.9, PC006) travel in-band on it.
 - Messages in each direction are processed in order. In particular, the exit status follows the last output, and a resize takes effect between the input bytes sent before and after it.
 - Keystrokes are sent as they are typed; line editing and echo belong to the Server PTY.
 - Values 1–23 are encoded by CBOR in one byte and are allocated only to frequent messages (terminal data, later file and forwarding data); others use 24 and above.
@@ -600,6 +601,34 @@ terminal-resize = [
 - A Client SHOULD coalesce bursts of size changes and send only the latest size. A Server MAY apply only the last of several resizes queued without data between them, and MAY limit the rate at which it applies them.
 - With one Attachment the size applies directly. The size given on attach (§14.6) is handled as a resize. Choice of size with several Attachments: PD003.
 
+## 14.9	Signals
+```
+terminal-signal = [
+  type: TERMINAL_SIGNAL,        ; value 26 (§11.3)
+  body: {
+    0 => uint,                  ; signal id
+    * int => any,
+  },
+]
+```
+| Id | Signal | Typical use |
+|---|---|---|
+| 0 | reserved | |
+| 1 | INT | interrupt |
+| 2 | QUIT | interrupt with core dump |
+| 3 | HUP | hangup, reload configuration |
+| 4 | TERM | graceful termination |
+| 5 | KILL | forced termination |
+| 6 | USR1 | application-defined |
+| 7 | USR2 | application-defined |
+
+- Signal ids are defined by this table, not by operating system numbers, which differ between platforms. The Server maps them to its platform. Further signals only through a capability (§11.4); an unknown id is a protocol violation (§0.2).
+- With a PTY, the control characters (Ctrl-C, Ctrl-\, Ctrl-Z) are input bytes and the PTY generates the signals (§14.4); TERMINAL_SIGNAL is for explicit delivery. Without a PTY it is the only way: a Client SHOULD send INT when the user interrupts a command locally.
+- Only the Client sends TERMINAL_SIGNAL, with or without a PTY, also after TERMINAL_EOF. There is no reply; if the target no longer exists or the Session is Exited, the signal is ignored.
+- Target: with a PTY, the foreground process group of the PTY; without a PTY, the process group of the command. The Server starts a command without a PTY in its own process group.
+- The Server MUST deliver a signal with the permissions of the Account: the result is the same as `kill(2)` called by that Account. A signal MUST NOT reach a process the Account could not signal itself.
+- A Server on a platform without POSIX signals maps them where an equivalent exists (e.g. INT to a console control event, TERM and KILL to process termination) and ignores the rest.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -631,6 +660,7 @@ Collected from all sections; consolidated in Tier PJ.
 - Terminal output reaches the Client's terminal emulator unfiltered; hostile escape sequences (e.g. clipboard writes by OSC 52, title or status reports injected back as input) are a risk of the emulator. Client-side protection is an open question (DECISIONS.md §7) (§14.7).
 - Output is never buffered without bound: QUIC flow control stops reading at the source (§14.7).
 - A small resize causes a large redraw; coalescing and Server rate limiting bound this amplification (§14.8).
+- Explicit signals carry the Account's permissions, never those of the Server process, so they cannot reach processes the user could not signal locally (e.g. root processes started with `sudo`) (§14.9).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -647,3 +677,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-11 (2026-10-13): terminal parameters: mode, command, PTY, environment, attach (§14.6).
 - draft-12 (2026-10-13): terminal I/O: data, stderr, EOF, backpressure (§14.7).
 - draft-13 (2026-10-13): terminal resize (§14.8).
+- draft-14 (2026-10-13): signals (§14.9).
