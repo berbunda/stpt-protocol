@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-10 (2026-10-13). Changes: see Document history.
+Specification version: draft-11 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -448,6 +448,7 @@ limits = {
 - Maximum message size: default and minimum 65535 bytes (§7.2). An Endpoint MUST NOT send a message larger than the limit announced by the peer.
 - CBOR nesting depth: every Endpoint MUST accept a depth of 16; messages defined by this specification never exceed it.
 - Account name: at most 256 bytes.
+- Terminal parameters and environment: §14.6.
 - Failed authentication attempts per Connection: default 6; a Server MAY use a lower value.
 - A violated limit is answered with LIMIT_EXCEEDED.
 
@@ -469,7 +470,7 @@ Other kinds are assigned by later sections (file transfer, client file access, p
 ## 14.2	Purpose and modes
 - A terminal Channel is the Attachment of a Connection to a Session (§3.3): opening it attaches, closing it detaches.
 - A Session has at most one terminal; several terminals are several Sessions.
-- Modes: interactive, with a PTY, and command, without a PTY (e.g. a single command with separate output and error streams). Mode parameters: PC002.
+- Modes: interactive, with a PTY, and command, without a PTY (e.g. a single command with separate output and error streams). Parameters: §14.6.
 
 ## 14.3	Opening
 Only the Client opens a terminal Channel. A Server MUST NOT open one; a Client receiving it MUST close the Connection with PROTOCOL_VIOLATION.
@@ -479,7 +480,7 @@ terminal-open = [
   body: {
     0 => 1,                     ; channel kind: terminal
     1 => session-id / null,     ; null: create a new Session; session-id: attach (PD001)
-    * int => any,               ; mode and PTY parameters: PC002
+    * int => any,               ; terminal parameters: §14.6
   },
 ]
 
@@ -505,6 +506,45 @@ terminal-attached = [
 ## 14.5	Number of Channels
 - A Connection MAY have no terminal Channel (e.g. file transfer only, port forwarding only, Session list).
 - The Server limits concurrent Channels per Connection with QUIC MAX_STREAMS (§8.2). RECOMMENDED default: 10.
+
+## 14.6	Terminal parameters
+```
+terminal-open body, continued:
+    ? 2 => pty-params,          ; present: create a PTY
+    ? 3 => command,             ; absent: login shell of the Account
+    ? 4 => { * tstr => tstr },  ; environment
+
+pty-params = {
+  0 => tstr,                    ; terminal type (TERM)
+  1 => uint,                    ; columns
+  2 => uint,                    ; rows
+  ? 3 => uint,                  ; width in pixels
+  ? 4 => uint,                  ; height in pixels
+  * int => any,
+}
+
+command = tstr / [+ tstr]
+```
+Mode and command:
+- PTY and command are independent: a login shell or a command, each with or without a PTY.
+- A text string is run by the Account's shell (`-c` on Unix-like systems). An array is an argument vector run directly, without a shell. A Client SHOULD use the array form when the arguments come from data rather than from a user typing a command line.
+- The command MUST NOT be empty and MUST NOT contain NUL. On a Server whose platform takes a single command line, the Server builds it from the array by that platform's quoting rules.
+
+PTY:
+- Terminal type: 1–64 bytes matching `[A-Za-z0-9][A-Za-z0-9._+-]*`. The Server sets `TERM` from this field only.
+- Columns and rows: 1–65535. Pixel sizes: 0–65535; 0 means unknown.
+- Terminal modes (termios) are not transmitted. The Server uses its defaults and enables UTF-8 input processing where the platform supports it (`IUTF8` on Linux).
+
+Environment:
+- Names are non-empty and contain neither `=` nor NUL; values contain no NUL. At most 64 variables; a name or a value at most 4096 bytes.
+- The Server applies only variables on its allowlist and silently ignores the rest. The default allowlist is `LANG` and `LC_*`. `TERM` is never taken from the environment field.
+- A Client MUST NOT forward its whole environment; it sends only `LANG`, `LC_*` and variables configured explicitly for the Server.
+
+Attach:
+- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes are allowed; they apply as a resize (PC004). Terminal type, command and environment MUST NOT be sent.
+
+Validation:
+- A malformed or out-of-range parameter, or a forbidden parameter on attach, rejects the Channel with CHANNEL_REJECTED; exceeded environment limits with LIMIT_EXCEEDED (§8.3, §13.2).
 
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
@@ -532,6 +572,8 @@ Collected from all sections; consolidated in Tier PJ.
 - Deadlines, limits and QUIC Retry bound the resources an unauthenticated peer can consume (§13.3–§13.5).
 - Only the Client opens terminal Channels; the Server cannot start an interactive context on the Client (§14.3).
 - Every terminal Channel is an authorized Attachment; Session termination is a separate explicit request (§14.3).
+- Environment variables pass only through a Server allowlist, closing attacks such as `LD_PRELOAD`, `BASH_ENV` or Shellshock (CVE-2014-6271); the Client does not leak its environment (§14.6).
+- The argument-vector command form avoids shell quoting injection; the terminal type is restricted to a safe character set (§14.6).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -545,3 +587,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-08 (2026-10-11): user authentication (§12).
 - draft-09 (2026-10-11): errors, timeouts and resource limits (§13); references to P items replaced by section numbers.
 - draft-10 (2026-10-13): terminal Channel: channel kinds, opening, single stream (§14).
+- draft-11 (2026-10-13): terminal parameters: mode, command, PTY, environment, attach (§14.6).
