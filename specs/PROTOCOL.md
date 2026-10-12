@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-14 (2026-10-13). Changes: see Document history.
+Specification version: draft-15 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -328,6 +328,7 @@ Assigned core types:
 | 24 | TERMINAL_EOF | §14.7 |
 | 25 | TERMINAL_RESIZE | §14.8 |
 | 26 | TERMINAL_SIGNAL | §14.9 |
+| 27 | TERMINAL_EXIT | §14.10 |
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -503,7 +504,7 @@ terminal-attached = [
 - Terminating a Session is not a Channel operation; it is a request on the control Channel (PD002).
 
 ## 14.4	Stream
-- A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: §14.7–§14.9, PC006) travel in-band on it.
+- A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: §14.7–§14.10) travel in-band on it.
 - Messages in each direction are processed in order. In particular, the exit status follows the last output, and a resize takes effect between the input bytes sent before and after it.
 - Keystrokes are sent as they are typed; line editing and echo belong to the Server PTY.
 - Values 1–23 are encoded by CBOR in one byte and are allocated only to frequent messages (terminal data, later file and forwarding data); others use 24 and above.
@@ -573,7 +574,7 @@ terminal-eof = [
 - Data is an opaque byte string, not necessarily UTF-8. Message boundaries carry no meaning: a receiver MUST NOT assume that a message holds whole characters or lines.
 - A sender SHOULD send data as soon as it is available, without delaying it to coalesce messages.
 - TERMINAL_EOF ends the input of a command without a PTY; afterwards the Client MUST NOT send TERMINAL_DATA. With a PTY, end of input is the in-band EOF character (Ctrl-D), and TERMINAL_EOF MUST NOT be sent.
-- The end of output is marked by the exit status, which follows the last output (§14.4, PC006).
+- The end of output is marked by the exit status, which follows the last output (§14.4, §14.10).
 - Messages sent against these rules are a protocol violation (§0.2).
 
 Backpressure:
@@ -613,7 +614,7 @@ terminal-signal = [
 ```
 | Id | Signal | Typical use |
 |---|---|---|
-| 0 | reserved | |
+| 0 | reserved; in TERMINAL_EXIT: a signal not in this table | |
 | 1 | INT | interrupt |
 | 2 | QUIT | interrupt with core dump |
 | 3 | HUP | hangup, reload configuration |
@@ -621,6 +622,15 @@ terminal-signal = [
 | 5 | KILL | forced termination |
 | 6 | USR1 | application-defined |
 | 7 | USR2 | application-defined |
+| 8 | ABRT | report only |
+| 9 | SEGV | report only |
+| 10 | PIPE | report only |
+| 11 | BUS | report only |
+| 12 | FPE | report only |
+| 13 | ILL | report only |
+| 14 | ALRM | report only |
+
+Ids marked "report only" appear only in TERMINAL_EXIT (§14.10); sending them in TERMINAL_SIGNAL is a protocol violation.
 
 - Signal ids are defined by this table, not by operating system numbers, which differ between platforms. The Server maps them to its platform. Further signals only through a capability (§11.4); an unknown id is a protocol violation (§0.2).
 - With a PTY, the control characters (Ctrl-C, Ctrl-\, Ctrl-Z) are input bytes and the PTY generates the signals (§14.4); TERMINAL_SIGNAL is for explicit delivery. Without a PTY it is the only way: a Client SHOULD send INT when the user interrupts a command locally.
@@ -628,6 +638,39 @@ terminal-signal = [
 - Target: with a PTY, the foreground process group of the PTY; without a PTY, the process group of the command. The Server starts a command without a PTY in its own process group.
 - The Server MUST deliver a signal with the permissions of the Account: the result is the same as `kill(2)` called by that Account. A signal MUST NOT reach a process the Account could not signal itself.
 - A Server on a platform without POSIX signals maps them where an equivalent exists (e.g. INT to a console control event, TERM and KILL to process termination) and ignores the rest.
+
+## 14.10	Exit status and Channel close
+```
+terminal-exit = [
+  type: TERMINAL_EXIT,          ; value 27 (§11.3)
+  body: {
+    ? 0 => uint,                ; exit code
+    ? 1 => uint,                ; signal id (§14.9), if terminated by a signal
+    ? 2 => bool,                ; core dumped
+    * int => any,
+  },
+]
+```
+- Exactly one of keys 0 and 1 is present. The exit code is up to 2^32−1 (0–255 on Unix-like systems, 32-bit on Windows).
+- A signal without an id in §14.9 is reported as id 0. A Client treats an id it does not know as id 0.
+
+Sending:
+- When the primary process (login shell or command) exits, the Session becomes Exited (§3.2). The Server reads the remaining output until end of file, but no longer than a grace period (RECOMMENDED 1 s, configurable), then sends TERMINAL_EXIT. Later output is discarded. Processes left running: PD002.
+- TERMINAL_EXIT is the last message of the Server on the stream; the Server then ends its direction (FIN).
+- On attach to an Exited Session the Server sends TERMINAL_EXIT right after TERMINAL_ATTACHED. Last output: PD005.
+- A Session whose exit status was delivered to an Attachment SHOULD be removed (Terminated) at once; final rule: PD002.
+
+Close:
+| Situation | Behaviour |
+|---|---|
+| process exited | Server: TERMINAL_EXIT, FIN; Client: FIN |
+| detach | Client: FIN; Server: FIN without TERMINAL_EXIT; the Session keeps running |
+| error | RESET_STREAM / STOP_SENDING with an error code (§13.1) |
+| Session terminated (PD002) | processes end; then as "process exited" |
+
+- FIN from the Client means detach, not end of input (TERMINAL_EOF, §14.7). Detach is allowed with and without a PTY.
+- Messages of the Client that crossed TERMINAL_EXIT are ignored silently; they are not a protocol violation.
+- Every close ends the Attachment and never changes the Session state by itself (§3.4).
 
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
@@ -661,6 +704,7 @@ Collected from all sections; consolidated in Tier PJ.
 - Output is never buffered without bound: QUIC flow control stops reading at the source (§14.7).
 - A small resize causes a large redraw; coalescing and Server rate limiting bound this amplification (§14.8).
 - Explicit signals carry the Account's permissions, never those of the Server process, so they cannot reach processes the user could not signal locally (e.g. root processes started with `sudo`) (§14.9).
+- A bounded grace period after the primary process exits keeps background processes from holding a Channel open indefinitely (§14.10).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -678,3 +722,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-12 (2026-10-13): terminal I/O: data, stderr, EOF, backpressure (§14.7).
 - draft-13 (2026-10-13): terminal resize (§14.8).
 - draft-14 (2026-10-13): signals (§14.9).
+- draft-15 (2026-10-13): exit status and Channel close (§14.10).
