@@ -21,7 +21,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 # 3	Tier PC — Terminal Channel
 - [x] PC001  terminal stream ✅ 2026-10-13
 - [x] PC002  PTY parameters: terminal type, size, environment ✅ 2026-10-13
-- [ ] PC003  terminal I/O
+- [x] PC003  terminal I/O ✅ 2026-10-13
 - [ ] PC004  terminal resize
 - [ ] PC005  signals
 - [ ] PC006  exit status and channel close

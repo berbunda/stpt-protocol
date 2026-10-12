@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-11 (2026-10-13). Changes: see Document history.
+Specification version: draft-12 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -323,6 +323,9 @@ Assigned core types:
 | 4 | AUTH_REQUEST | §12.2 |
 | 5 | AUTH_RESULT | §12.2 |
 | 6 | TERMINAL_ATTACHED | §14.3 |
+| 7 | TERMINAL_DATA | §14.7 |
+| 8 | TERMINAL_STDERR | §14.7 |
+| 24 | TERMINAL_EOF | §14.7 |
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -501,7 +504,7 @@ terminal-attached = [
 - A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: PC003–PC006) travel in-band on it.
 - Messages in each direction are processed in order. In particular, the exit status follows the last output, and a resize takes effect between the input bytes sent before and after it.
 - Keystrokes are sent as they are typed; line editing and echo belong to the Server PTY.
-- Types of frequent messages (terminal data) are allocated in 1–23, encoded by CBOR in one byte.
+- Values 1–23 are encoded by CBOR in one byte and are allocated only to frequent messages (terminal data, later file and forwarding data); others use 24 and above.
 
 ## 14.5	Number of Channels
 - A Connection MAY have no terminal Channel (e.g. file transfer only, port forwarding only, Session list).
@@ -546,6 +549,37 @@ Attach:
 Validation:
 - A malformed or out-of-range parameter, or a forbidden parameter on attach, rejects the Channel with CHANNEL_REJECTED; exceeded environment limits with LIMIT_EXCEEDED (§8.3, §13.2).
 
+## 14.7	Terminal I/O
+```
+terminal-data = [
+  type: TERMINAL_DATA,          ; value 7 (§11.3)
+  body: { 0 => bstr .size (1..), * int => any },
+]
+
+terminal-stderr = [
+  type: TERMINAL_STDERR,        ; value 8 (§11.3)
+  body: { 0 => bstr .size (1..), * int => any },
+]
+
+terminal-eof = [
+  type: TERMINAL_EOF,           ; value 24 (§11.3)
+  body: { * int => any },
+]
+```
+- TERMINAL_DATA carries input from the Client and output (stdout or PTY output) from the Server.
+- TERMINAL_STDERR carries the error output of a command without a PTY; only the Server sends it, and only without a PTY.
+- Data is an opaque byte string, not necessarily UTF-8. Message boundaries carry no meaning: a receiver MUST NOT assume that a message holds whole characters or lines.
+- A sender SHOULD send data as soon as it is available, without delaying it to coalesce messages.
+- TERMINAL_EOF ends the input of a command without a PTY; afterwards the Client MUST NOT send TERMINAL_DATA. With a PTY, end of input is the in-band EOF character (Ctrl-D), and TERMINAL_EOF MUST NOT be sent.
+- The end of output is marked by the exit status, which follows the last output (§14.4, PC006).
+- Messages sent against these rules are a protocol violation (§0.2).
+
+Backpressure:
+- QUIC stream flow control is the backpressure. While the stream is blocked, the Server stops reading the PTY or the output pipes; it MUST NOT buffer output without bound.
+- Output of a Session without an Attachment: PD.
+
+Output is passed unmodified in both directions; escape sequences are not filtered (see Security Considerations).
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -574,6 +608,8 @@ Collected from all sections; consolidated in Tier PJ.
 - Every terminal Channel is an authorized Attachment; Session termination is a separate explicit request (§14.3).
 - Environment variables pass only through a Server allowlist, closing attacks such as `LD_PRELOAD`, `BASH_ENV` or Shellshock (CVE-2014-6271); the Client does not leak its environment (§14.6).
 - The argument-vector command form avoids shell quoting injection; the terminal type is restricted to a safe character set (§14.6).
+- Terminal output reaches the Client's terminal emulator unfiltered; hostile escape sequences (e.g. clipboard writes by OSC 52, title or status reports injected back as input) are a risk of the emulator. Client-side protection is an open question (DECISIONS.md §7) (§14.7).
+- Output is never buffered without bound: QUIC flow control stops reading at the source (§14.7).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -588,3 +624,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-09 (2026-10-11): errors, timeouts and resource limits (§13); references to P items replaced by section numbers.
 - draft-10 (2026-10-13): terminal Channel: channel kinds, opening, single stream (§14).
 - draft-11 (2026-10-13): terminal parameters: mode, command, PTY, environment, attach (§14.6).
+- draft-12 (2026-10-13): terminal I/O: data, stderr, EOF, backpressure (§14.7).

@@ -35,6 +35,7 @@ Do not create differences for the sake of differences.
 - ✅ 2026-10-11 A Connection is not bound to a network path: QUIC connection migration keeps the Connection; after Connection loss a new Connection is required.
 - ✅ 2026-10-13 Terminal Channel (PROTOCOL.md §14): channel kind 1; other kinds (file transfer, client file access, port forwarding) assigned by their Tiers; Session and audit are not channel kinds. Opened only by the Client; opening = attach to a new or existing Session, closing = detach; Session termination is a control request. One Session has one terminal. Command execution without a PTY is a mode of the terminal Channel, not a separate kind. One bidirectional stream with in-band input, output, resize, signals and exit status; input is not split off (ordering). A Connection may have zero terminal Channels; the maximum is a Server limit via MAX_STREAMS (default 10). Message types are not limited to 255; frequent ones use one-byte CBOR values 1–23.
 - ✅ 2026-10-13 Terminal parameters (PROTOCOL.md §14.6): PTY and command are independent fields; command as a string (run by the Account's shell) or as an argument vector (run directly, no quoting injection); TERM restricted to 1–64 bytes `[A-Za-z0-9][A-Za-z0-9._+-]*`; size 1–65535 cells, optional pixels; termios not transmitted, Server defaults with UTF-8 input; environment only through a Server allowlist (default `LANG`, `LC_*`), others ignored silently, the Client never forwards its whole environment; on attach only the size is allowed.
+- ✅ 2026-10-13 Terminal I/O (PROTOCOL.md §14.7): TERMINAL_DATA both ways as opaque bytes; stderr without a PTY as a separate type TERMINAL_STDERR, so an implementation unaware of it fails closed instead of mixing streams; TERMINAL_EOF only without a PTY (stream FIN would block later signals); backpressure by QUIC flow control while attached; output of a detached Session: Tier PD. One-byte CBOR types 1–23 only for frequent messages.
 - SSH already multiplexes channels. The QUIC advantage is, among others, independent loss recovery per stream.
 
 # 5	Transport and connection establishment
@@ -80,6 +81,7 @@ Later:
 
 Keystroke recording is not a reliable log of executed shell commands; secret handling and audit boundaries need separate design.
 - ✅ 2026-10-13 Purpose of input recording: quick access to the command history of a Session through an STPT subcommand; input typed with echo off (passwords) is excluded. Recorded on the Server, not a separate stream of the terminal Channel.
+- ❓ Protection of the Client terminal emulator against hostile escape sequences in output (OSC 52 clipboard writes, reports injected as input, misleading OSC 8 links): the protocol passes output unfiltered, like SSH; an optional Client-side filter is to be analysed in Tier PJ.
 - ❓ How to extract commands reliably (raw keystrokes vs shell integration such as OSC 133 prompt marks): Tier PH.
 
 # 8	CLI
