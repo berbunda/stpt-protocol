@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-12 (2026-10-13). Changes: see Document history.
+Specification version: draft-13 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -326,6 +326,7 @@ Assigned core types:
 | 7 | TERMINAL_DATA | §14.7 |
 | 8 | TERMINAL_STDERR | §14.7 |
 | 24 | TERMINAL_EOF | §14.7 |
+| 25 | TERMINAL_RESIZE | §14.8 |
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -501,7 +502,7 @@ terminal-attached = [
 - Terminating a Session is not a Channel operation; it is a request on the control Channel (PD002).
 
 ## 14.4	Stream
-- A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: PC003–PC006) travel in-band on it.
+- A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: §14.7, §14.8, PC005, PC006) travel in-band on it.
 - Messages in each direction are processed in order. In particular, the exit status follows the last output, and a resize takes effect between the input bytes sent before and after it.
 - Keystrokes are sent as they are typed; line editing and echo belong to the Server PTY.
 - Values 1–23 are encoded by CBOR in one byte and are allocated only to frequent messages (terminal data, later file and forwarding data); others use 24 and above.
@@ -544,7 +545,7 @@ Environment:
 - A Client MUST NOT forward its whole environment; it sends only `LANG`, `LC_*` and variables configured explicitly for the Server.
 
 Attach:
-- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes are allowed; they apply as a resize (PC004). Terminal type, command and environment MUST NOT be sent.
+- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes are allowed; they apply as a resize (§14.8). Terminal type, command and environment MUST NOT be sent.
 
 Validation:
 - A malformed or out-of-range parameter, or a forbidden parameter on attach, rejects the Channel with CHANNEL_REJECTED; exceeded environment limits with LIMIT_EXCEEDED (§8.3, §13.2).
@@ -580,6 +581,25 @@ Backpressure:
 
 Output is passed unmodified in both directions; escape sequences are not filtered (see Security Considerations).
 
+## 14.8	Terminal resize
+```
+terminal-resize = [
+  type: TERMINAL_RESIZE,        ; value 25 (§11.3)
+  body: {
+    1 => uint,                  ; columns
+    2 => uint,                  ; rows
+    ? 3 => uint,                ; width in pixels
+    ? 4 => uint,                ; height in pixels
+    * int => any,
+  },
+]
+```
+- Keys and ranges are those of `pty-params` (§14.6); the terminal type does not change after creation.
+- Only the Client sends TERMINAL_RESIZE, and only on a Channel with a PTY; otherwise it is a protocol violation (§0.2). There is no reply.
+- The Server applies the size to the PTY (e.g. `TIOCSWINSZ` on Unix-like systems, which delivers SIGWINCH to the foreground process group). The Server cannot change the size of the Client window.
+- A Client SHOULD coalesce bursts of size changes and send only the latest size. A Server MAY apply only the last of several resizes queued without data between them, and MAY limit the rate at which it applies them.
+- With one Attachment the size applies directly. The size given on attach (§14.6) is handled as a resize. Choice of size with several Attachments: PD003.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -610,6 +630,7 @@ Collected from all sections; consolidated in Tier PJ.
 - The argument-vector command form avoids shell quoting injection; the terminal type is restricted to a safe character set (§14.6).
 - Terminal output reaches the Client's terminal emulator unfiltered; hostile escape sequences (e.g. clipboard writes by OSC 52, title or status reports injected back as input) are a risk of the emulator. Client-side protection is an open question (DECISIONS.md §7) (§14.7).
 - Output is never buffered without bound: QUIC flow control stops reading at the source (§14.7).
+- A small resize causes a large redraw; coalescing and Server rate limiting bound this amplification (§14.8).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -625,3 +646,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-10 (2026-10-13): terminal Channel: channel kinds, opening, single stream (§14).
 - draft-11 (2026-10-13): terminal parameters: mode, command, PTY, environment, attach (§14.6).
 - draft-12 (2026-10-13): terminal I/O: data, stderr, EOF, backpressure (§14.7).
+- draft-13 (2026-10-13): terminal resize (§14.8).
