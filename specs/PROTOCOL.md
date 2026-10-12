@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-09 (2026-10-11). Changes: see Document history.
+Specification version: draft-10 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -148,7 +148,7 @@ Each Connection is one QUIC connection secured by TLS 1.3.
 ## 7.1	Streams
 - Channels use bidirectional QUIC streams only. Endpoints MUST set the transport parameter `initial_max_streams_uni` to 0.
 - Every stream carries a sequence of frames (§7.2) in each direction; no stream carries unframed bytes.
-- The control Channel and its stream: §8. The first message on any other stream identifies its Channel: §8, PC001.
+- The control Channel and its stream: §8. The first message on any other stream identifies its Channel: §8, §14.
 
 ## 7.2	Frame
 ```
@@ -206,7 +206,7 @@ Every Channel other than control is opened on a new bidirectional stream. The op
 channel-open = [
   type: CHANNEL_OPEN,      ; value 3 (§11.3)
   body: {
-    0 => uint,             ; channel kind (terminal: PC001; others: later Tiers)
+    0 => uint,             ; channel kind (§14.1)
     * int => any,          ; parameters defined by the channel kind
   },
 ]
@@ -322,6 +322,7 @@ Assigned core types:
 | 3 | CHANNEL_OPEN | §8.3 |
 | 4 | AUTH_REQUEST | §12.2 |
 | 5 | AUTH_RESULT | §12.2 |
+| 6 | TERMINAL_ATTACHED | §14.3 |
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -455,6 +456,56 @@ limits = {
 - A Server SHOULD use QUIC Retry (RFC 9000 §8.1.2) to validate client addresses under load.
 - Before authentication a Server keeps only the state needed for the handshake; Session resources are allocated only after authentication.
 
+# 14	Terminal Channel
+
+## 14.1	Channel kinds
+| Kind | Channel | Defined in |
+|---|---|---|
+| 0 | reserved | |
+| 1 | terminal | §14 |
+
+Other kinds are assigned by later sections (file transfer, client file access, port forwarding). Control is not a channel kind: it is stream 0 (§8.1).
+
+## 14.2	Purpose and modes
+- A terminal Channel is the Attachment of a Connection to a Session (§3.3): opening it attaches, closing it detaches.
+- A Session has at most one terminal; several terminals are several Sessions.
+- Modes: interactive, with a PTY, and command, without a PTY (e.g. a single command with separate output and error streams). Mode parameters: PC002.
+
+## 14.3	Opening
+Only the Client opens a terminal Channel. A Server MUST NOT open one; a Client receiving it MUST close the Connection with PROTOCOL_VIOLATION.
+```
+terminal-open = [
+  type: CHANNEL_OPEN,
+  body: {
+    0 => 1,                     ; channel kind: terminal
+    1 => session-id / null,     ; null: create a new Session; session-id: attach (PD001)
+    * int => any,               ; mode and PTY parameters: PC002
+  },
+]
+
+terminal-attached = [
+  type: TERMINAL_ATTACHED,      ; value 6 (§11.3)
+  body: {
+    0 => session-id,            ; the attached Session (PD001)
+    * int => any,
+  },
+]
+```
+- The Server checks the Authentication Context and authorizes the create or attach (PD003). On success its first message on the stream is TERMINAL_ATTACHED; on failure it rejects the Channel (§8.3).
+- The Client MUST NOT send any further message on the stream before TERMINAL_ATTACHED.
+- A Connection MUST NOT have two terminal Channels attached to the same Session; the Server rejects the second CHANNEL_OPEN.
+- Terminating a Session is not a Channel operation; it is a request on the control Channel (PD002).
+
+## 14.4	Stream
+- A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: PC003–PC006) travel in-band on it.
+- Messages in each direction are processed in order. In particular, the exit status follows the last output, and a resize takes effect between the input bytes sent before and after it.
+- Keystrokes are sent as they are typed; line editing and echo belong to the Server PTY.
+- Types of frequent messages (terminal data) are allocated in 1–23, encoded by CBOR in one byte.
+
+## 14.5	Number of Channels
+- A Connection MAY have no terminal Channel (e.g. file transfer only, port forwarding only, Session list).
+- The Server limits concurrent Channels per Connection with QUIC MAX_STREAMS (§8.2). RECOMMENDED default: 10.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -479,6 +530,8 @@ Collected from all sections; consolidated in Tier PJ.
 - No passwords: nothing a phishing or compromised Server could capture and reuse (§12.1).
 - Before authentication errors carry no reason text (§13.1).
 - Deadlines, limits and QUIC Retry bound the resources an unauthenticated peer can consume (§13.3–§13.5).
+- Only the Client opens terminal Channels; the Server cannot start an interactive context on the Client (§14.3).
+- Every terminal Channel is an authorized Attachment; Session termination is a separate explicit request (§14.3).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -491,3 +544,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-07 (2026-10-11): negotiation and extension rules (§11); current draft wire version 0xFF000001.
 - draft-08 (2026-10-11): user authentication (§12).
 - draft-09 (2026-10-11): errors, timeouts and resource limits (§13); references to P items replaced by section numbers.
+- draft-10 (2026-10-13): terminal Channel: channel kinds, opening, single stream (§14).

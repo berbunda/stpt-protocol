@@ -19,7 +19,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PB009  errors, timeouts, resource limits ✅ 2026-10-11
 
 # 3	Tier PC — Terminal Channel
-- [ ] PC001  terminal stream
+- [x] PC001  terminal stream ✅ 2026-10-13
 - [ ] PC002  PTY parameters: terminal type, size, environment
 - [ ] PC003  terminal I/O
 - [ ] PC004  terminal resize

@@ -33,6 +33,7 @@ Do not create differences for the sake of differences.
 - ✅ 2026-10-11 The control Channel is client stream 0 and lives as long as the Connection; other Channels open with CHANNEL_OPEN on a new stream; before authentication QUIC stream limits allow only the control stream (PROTOCOL.md §8).
 - ✅ 2026-10-11 State model (PROTOCOL.md §3): Authenticated is a Connection state, not only a property; until it only the control Channel is available. A Session has an Exited state that keeps the exit status for later Attachments under Retention Policy.
 - ✅ 2026-10-11 A Connection is not bound to a network path: QUIC connection migration keeps the Connection; after Connection loss a new Connection is required.
+- ✅ 2026-10-13 Terminal Channel (PROTOCOL.md §14): channel kind 1; other kinds (file transfer, client file access, port forwarding) assigned by their Tiers; Session and audit are not channel kinds. Opened only by the Client; opening = attach to a new or existing Session, closing = detach; Session termination is a control request. One Session has one terminal. Command execution without a PTY is a mode of the terminal Channel, not a separate kind. One bidirectional stream with in-band input, output, resize, signals and exit status; input is not split off (ordering). A Connection may have zero terminal Channels; the maximum is a Server limit via MAX_STREAMS (default 10). Message types are not limited to 255; frequent ones use one-byte CBOR values 1–23.
 - SSH already multiplexes channels. The QUIC advantage is, among others, independent loss recovery per stream.
 
 # 5	Transport and connection establishment
@@ -77,6 +78,8 @@ Later:
 - additional identity, deployment and hardening models.
 
 Keystroke recording is not a reliable log of executed shell commands; secret handling and audit boundaries need separate design.
+- ✅ 2026-10-13 Purpose of input recording: quick access to the command history of a Session through an STPT subcommand; input typed with echo off (passwords) is excluded. Recorded on the Server, not a separate stream of the terminal Channel.
+- ❓ How to extract commands reliably (raw keystrokes vs shell integration such as OSC 133 prompt marks): Tier PH.
 
 # 8	CLI
 - ✅ 2026-10-10 Commands are explicit: every operation has its own subcommand; no implicit forms such as `stpt user@host`.
