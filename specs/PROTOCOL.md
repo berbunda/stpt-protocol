@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-20 (2026-10-13). Changes: see Document history.
+Specification version: draft-21 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -360,6 +360,7 @@ Assigned core types:
 | 28 | SESSION_TERMINATE | §15.6 |
 | 29 | REQUEST_RESULT | §8.4 |
 | 30 | SESSION_DETACH | §15.9 |
+| 31 | SESSION_LIST | §15.10 |
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -726,7 +727,7 @@ session-id = bstr .size 16
 ```
 - The Server generates the Session ID at creation: 16 bytes from a cryptographically secure random number generator. A Client never chooses it.
 - IDs are unique per Server and never reused (§3.4). Random IDs keep this true across Server restarts without persistent state, so a Client holding an old ID cannot reach a new Session that got the same number; they also do not reveal how many Sessions exist.
-- Text form: 32 lowercase hexadecimal digits, e.g. `3f2a9c0e5b7d41e6a8c2f09d1e4b7a53`. A Client MAY accept a unique prefix from the user and resolve it through the Session list (PD004); on the wire the full ID is always sent.
+- Text form: 32 lowercase hexadecimal digits, e.g. `3f2a9c0e5b7d41e6a8c2f09d1e4b7a53`. A Client MAY accept a unique prefix from the user and resolve it through the Session list (§15.10); on the wire the full ID is always sent.
 
 ## 15.2	Ownership
 - A Session is owned by the Account of the Authentication Context that created it. The owner is fixed at creation and never changes.
@@ -734,10 +735,10 @@ session-id = bstr .size 16
 - The Session ID is not a secret and grants no access: access is decided by the Account only. The ID may be displayed, logged and passed into the Session (§15.4).
 - A Session of another Account is not accessible through the protocol, whatever the privileges of the Account on the Server.
 - The Server MUST handle the ID of a Session of another Account exactly as an unknown ID: SESSION_NOT_FOUND in both cases, so the existence of other Accounts' Sessions is not revealed. The Server SHOULD make the response time independent of the reason.
-- The Server keeps the User Identity that created a Session as metadata (Session list PD004, audit Tier PH); it is not used for authorization.
+- The Server keeps the User Identity that created a Session as metadata (Session list §15.10, audit Tier PH); it is not used for authorization.
 
 ## 15.3	Session name
-- Names are for users; the protocol addresses Sessions by ID only. A Client resolves a name to an ID through the Session list (PD004).
+- Names are for users; the protocol addresses Sessions by ID only. A Client resolves a name to an ID through the Session list (§15.10).
 - A Client MAY give a name when it creates a Session (key 5 of terminal-open, §14.6). In this version a name is set only at creation; a Session without a name has none.
 - Name: 1–64 bytes matching `[A-Za-z0-9][A-Za-z0-9._-]*`, compared byte by byte.
 - A name is unique among the owner Account's Sessions that are not Terminated. A taken name rejects the Channel with SESSION_NAME_IN_USE; a malformed one with CHANNEL_REJECTED (§14.6).
@@ -811,7 +812,7 @@ Authorization:
 - Restrictions by key within an Account: Tier PI.
 
 Attachment ID:
-- The Server assigns an Attachment ID at create and at attach and returns it in TERMINAL_ATTACHED (§14.3). It is unique within the Session and never reused in it. Attachments of a Session are listed with the Session (PD004).
+- The Server assigns an Attachment ID at create and at attach and returns it in TERMINAL_ATTACHED (§14.3). It is unique within the Session and never reused in it. Attachments of a Session are listed with the Session (§15.10).
 
 Several Attachments:
 - A Session MAY have several Attachments, at most one per Connection (§14.3). The Server limits them per Session (RECOMMENDED 8) and rejects a further attach with LIMIT_EXCEEDED.
@@ -834,6 +835,69 @@ Detach request:
 - SESSION_DETACH ends one Attachment of the Session, given by its ID, or all of them. The detached Clients see a detach by the Server (§14.10). The Server answers once those Attachments have ended.
 - Only the owner Account may send it (§15.2). An unknown Session is answered with SESSION_NOT_FOUND, an unknown Attachment ID with ATTACHMENT_NOT_FOUND.
 - There is no request to detach "all but the current one": it would be a command from inside the Session controlling Attachments (DECISIONS.md §8). The same intent is expressed at attach by the takeover mode.
+
+## 15.10	Session list
+```
+session-list = [
+  type: SESSION_LIST,           ; value 31 (§11.3)
+  body: {
+    0 => request-id,            ; §8.4
+    ? 1 => session-id,          ; only this Session
+    ? 2 => session-id,          ; after: continue after this ID
+    * int => any,
+  },
+]
+
+session-list-result = REQUEST_RESULT body (§8.4), continued:
+    2 => [* session-info],
+    ? 3 => bool,                ; more: further Sessions follow
+
+session-info = {
+  0 => session-id,
+  ? 1 => tstr,                  ; name (§15.3)
+  2 => uint,                    ; state: 1 Running, 2 Exited, 3 Terminating
+  3 => uint,                    ; creation time
+  4 => bstr .size 32,           ; Ed25519 public key that created the Session
+  ? 5 => tstr,                  ; label of that key
+  6 => bool,                    ; PTY
+  ? 7 => tstr,                  ; command for display; absent: login shell
+  ? 8 => exit-status,           ; Exited only
+  ? 9 => uint,                  ; removal time (Retention Policy, detach timeout)
+  10 => [* attachment-info],
+  * int => any,
+}
+
+attachment-info = {
+  0 => attachment-id,           ; §15.9
+  1 => uint,                    ; attach time
+  2 => bstr .size 32,           ; Ed25519 public key of the attached Connection
+  ? 3 => tstr,                  ; label of that key
+  4 => bool,                    ; read-only
+  5 => bool,                    ; active: its size applies (§15.9)
+  ? 6 => address,
+  * int => any,
+}
+
+exit-status = { ? 0 => uint, ? 1 => uint, ? 2 => bool, * int => any }   ; as the TERMINAL_EXIT body (§14.10)
+address = [bstr .size 4 / bstr .size 16, uint]                          ; IPv4 or IPv6 address, UDP port
+```
+Scope:
+- The list holds only Sessions of the Account of the Connection (§15.2) in the states Running, Exited and Terminating. With key 1 it holds only that Session; an unknown or foreign one is answered with SESSION_NOT_FOUND.
+- Listing changes no state. In particular it does not deliver the exit status of an Exited Session (§15.7).
+- A Client resolves Session names and unique ID prefixes from the list (§15.1, §15.3).
+
+Paging:
+- Sessions are ordered by Session ID, bytewise ascending. With `after` the list continues with the IDs greater than it; that Session need not exist any more.
+- The Server puts as many Sessions as fit the maximum message size of the Client (§13.4) and sets `more` if others follow. Pages are not a snapshot: Sessions may appear or end between requests.
+
+Fields:
+- Times are Unix time in seconds (UTC) by the Server clock; the Client converts them for display.
+- Public keys are sent as keys; the Client shows their fingerprints (§9.2).
+- Label: an optional name the Server configuration gives to an authorized key (e.g. the comment of the key entry, such as `laptop-work`), 1–64 bytes. A Client MAY also keep its own local names for fingerprints.
+- Command: for display only, never to be run. A text string is shown as it is, an argument vector joined with spaces; the Server cuts it to at most 256 bytes at a character boundary.
+- Removal time: present while a deadline of Retention Policy or of the detach timeout applies to the Session (§15.8).
+- Address: the Client address and UDP port of the Attachment's Connection as the Server sees them, the current ones after a migration. The Server MAY omit it by configuration.
+- Limits on names, labels, command and Attachments (§15.3, §15.9) keep one session-info well below the minimum message size (§13.4).
 
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
@@ -874,6 +938,7 @@ Collected from all sections; consolidated in Tier PJ.
 - A limit of Sessions per Account bounds the resources an authenticated user can hold on the Server (§15.8).
 - A stalled Client is detached after a bounded time, so it cannot block the processes of a Session or the other Attachments (§15.9).
 - Read-only Attachments prevent accidental input but are not a security boundary within an Account (§15.9).
+- The Session list shows only the Sessions of the Account; Attachment addresses and commands are visible to every key of that Account, which matters for Accounts shared by several people (§15.10).
 - A Session ID grants no access; an ID of another Account's Session is answered exactly as an unknown one, so Sessions of other Accounts cannot be probed (§15.2).
 
 # Document history
@@ -898,3 +963,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-18 (2026-10-13): control requests and REQUEST_RESULT (§8.4); Session creation, detach, termination, exit and removal, Retention Policy (§15.5–§15.8); message types SESSION_TERMINATE, REQUEST_RESULT.
 - draft-19 (2026-10-13): detach timeout requested by the Client (§14.6, §15.8).
 - draft-20 (2026-10-13): attach authorization, Attachment ID, several Attachments, attach modes shared and takeover, read-only, terminal size, stalled Attachments, detach request (§15.9); message type SESSION_DETACH; error code ATTACHMENT_NOT_FOUND.
+- draft-21 (2026-10-13): Session list with Attachments, paging (§15.10); message type SESSION_LIST.
