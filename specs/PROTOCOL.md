@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-17 (2026-10-13). Changes: see Document history.
+Specification version: draft-18 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -45,7 +45,7 @@ Client ──── Connection ──── Server
 - A Connection carries Channels; each Channel uses one or more Streams.
 - A Server hosts zero or more Sessions; each Session is owned by exactly one Account.
 - An Attachment links one Connection with one Session and requires an Authentication Context on that Connection. The number of Attachments per Connection and per Session: PD003.
-- The end of a Connection ends its Channels and Attachments, but not its Sessions. A Session ends by termination or by Retention Policy (§3.2, PD002).
+- The end of a Connection ends its Channels and Attachments, but not its Sessions. A Session ends by exit, termination or Retention Policy (§3.2, §15.6–§15.8).
 
 # 3	State model
 States are abstract; their wire representation is defined in §7 and later sections (PC, PD).
@@ -75,7 +75,7 @@ The Server holds the authoritative Session state.
 | Running | Exited | the primary process exited |
 | Running | Terminating | termination requested by an authorized Client or by Server policy |
 | Terminating | Terminated | all processes ended |
-| Exited | Terminated | removal by an authorized Client or by Retention Policy |
+| Exited | Terminated | exit status delivered to an Attachment, removal by an authorized Client or by Retention Policy |
 
 - Running: processes run; terminal I/O is available through Attachments.
 - Exited: processes ended; the exit status and possibly the last output are kept for later Attachments.
@@ -190,7 +190,7 @@ message = [
 ## 8.1	Control stream
 - The control Channel uses the first client-initiated bidirectional stream (stream ID 0). The Client opens it immediately after the handshake; its first message is HELLO (§10).
 - The control stream lives as long as the Connection. If either direction of it ends (FIN) or is reset (RESET_STREAM, STOP_SENDING), the Endpoint MUST close the Connection with an error (§13).
-- The control Channel carries connection-level messages: HELLO and negotiation (§10, §11), user authentication (§12), Session operations (PD).
+- The control Channel carries connection-level messages: HELLO and negotiation (§10, §11), user authentication (§12), Session requests (§8.4, §15).
 - A message not permitted on the control stream, or not permitted in the current Connection state (§3.1), is a protocol violation.
 - A sender SHOULD give the control stream priority over other streams.
 
@@ -213,6 +213,34 @@ channel-open = [
 ```
 - The receiver checks the kind and the Authentication Context. To reject, it resets the stream and sends STOP_SENDING with CHANNEL_REJECTED (§13.2); the Connection stays open.
 - After acceptance the stream carries messages of that channel kind only. Further streams of the same Channel, if any, are defined by its kind.
+
+## 8.4	Requests
+Operations that are not Channels (e.g. Session termination, §15.6) are requests on the control Channel:
+```
+request = [
+  type: uint,              ; request type, e.g. SESSION_TERMINATE
+  body: {
+    0 => request-id,
+    * int => any,          ; parameters defined by the request
+  },
+]
+
+request-id = uint
+
+request-result = [
+  type: REQUEST_RESULT,    ; value 29 (§11.3)
+  body: {
+    0 => request-id,
+    1 => uint,             ; error code (§13.2); 0 (NO_ERROR): success
+    * int => any,          ; result data defined by the request
+  },
+]
+```
+- In this version only the Client sends requests, and only on an Authenticated Connection.
+- The Client chooses the request ID; it MUST be unique among its requests still without a result. A duplicate is a protocol violation.
+- The Server answers every request with exactly one REQUEST_RESULT. Results may come in any order, so a long request does not hold up others.
+- The Server MAY limit outstanding requests per Connection (RECOMMENDED 16) and answers a request over the limit with LIMIT_EXCEEDED.
+- A failed request is reported only in its result; the Connection stays open. A REQUEST_RESULT with an unknown request ID is a protocol violation.
 
 # 9	Server Identity and first-contact trust
 
@@ -329,6 +357,8 @@ Assigned core types:
 | 25 | TERMINAL_RESIZE | §14.8 |
 | 26 | TERMINAL_SIGNAL | §14.9 |
 | 27 | TERMINAL_EXIT | §14.10 |
+| 28 | SESSION_TERMINATE | §15.6 |
+| 29 | REQUEST_RESULT | §8.4 |
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -417,7 +447,7 @@ auth-signed-data = [
 Errors use QUIC mechanisms; there is no error message:
 - Connection error: CONNECTION_CLOSE (application variant) with an error code (§13.2). A regular close uses NO_ERROR.
 - Stream error: RESET_STREAM and STOP_SENDING with an error code; the Connection stays open.
-- Errors of individual requests (e.g. Session operations) are reported by the responses those requests define.
+- Errors of individual requests (e.g. Session termination) are reported in REQUEST_RESULT (§8.4).
 - Before the Connection is Authenticated, the reason phrase of CONNECTION_CLOSE MUST be empty. Afterwards it MAY contain a short diagnostic text and MUST NOT contain secrets.
 - The Server SHOULD record the exact reason of every rejection (Connection, authentication, Channel, request) in its local log. The peer receives only the error code; the administrator diagnoses from the log.
 
@@ -430,10 +460,10 @@ Errors use QUIC mechanisms; there is no error message:
 | 3 | VERSION_NEGOTIATION_FAILED | Connection | no common wire version (§11.1) |
 | 4 | AUTH_FAILED | Connection | authentication attempts exhausted (§12.4) |
 | 5 | TIMEOUT | Connection | a deadline of §13.3 expired |
-| 6 | LIMIT_EXCEEDED | Connection, stream | a limit of §13.4 exceeded |
+| 6 | LIMIT_EXCEEDED | Connection, stream, request | a limit of §13.4 exceeded |
 | 7 | CHANNEL_REJECTED | stream | CHANNEL_OPEN rejected (§8.3) |
 | 8 | SERVER_SHUTDOWN | Connection | the Server is shutting down |
-| 9 | SESSION_NOT_FOUND | stream | no Session with this ID for the Account (§15.2) |
+| 9 | SESSION_NOT_FOUND | stream, request | no Session with this ID for the Account (§15.2) |
 | 10 | SESSION_NAME_IN_USE | stream | the Session name is taken (§15.3) |
 
 Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above are for private and experimental use.
@@ -459,6 +489,7 @@ limits = {
 - CBOR nesting depth: every Endpoint MUST accept a depth of 16; messages defined by this specification never exceed it.
 - Account name: at most 256 bytes.
 - Terminal parameters and environment: §14.6.
+- Outstanding requests per Connection: §8.4. Sessions per Account: §15.8.
 - Failed authentication attempts per Connection: default 6; a Server MAY use a lower value.
 - A violated limit is answered with LIMIT_EXCEEDED.
 
@@ -505,7 +536,7 @@ terminal-attached = [
 - The Server checks the Authentication Context and authorizes the create or attach (PD003). On success its first message on the stream is TERMINAL_ATTACHED; on failure it rejects the Channel (§8.3). An unknown Session ID is rejected with SESSION_NOT_FOUND (§15.2).
 - The Client MUST NOT send any further message on the stream before TERMINAL_ATTACHED.
 - A Connection MUST NOT have two terminal Channels attached to the same Session; the Server rejects the second CHANNEL_OPEN.
-- Terminating a Session is not a Channel operation; it is a request on the control Channel (PD002).
+- Terminating a Session is not a Channel operation; it is a request on the control Channel (§15.6).
 
 ## 14.4	Stream
 - A terminal Channel uses exactly one bidirectional stream. Data and control messages (input, output, resize, signals, exit status: §14.7–§14.10) travel in-band on it.
@@ -584,7 +615,7 @@ terminal-eof = [
 
 Backpressure:
 - QUIC stream flow control is the backpressure. While the stream is blocked, the Server stops reading the PTY or the output pipes; it MUST NOT buffer output without bound.
-- Output of a Session without an Attachment: PD.
+- Output of a Session without an Attachment: §15.5.
 
 Output is passed unmodified in both directions; escape sequences are not filtered (see Security Considerations).
 
@@ -660,10 +691,10 @@ terminal-exit = [
 - A signal without an id in §14.9 is reported as id 0. A Client treats an id it does not know as id 0.
 
 Sending:
-- When the primary process (login shell or command) exits, the Session becomes Exited (§3.2). The Server reads the remaining output until end of file, but no longer than a grace period (RECOMMENDED 1 s, configurable), then sends TERMINAL_EXIT. Later output is discarded. Processes left running: PD002.
+- When the primary process (login shell or command) exits, the Session becomes Exited (§3.2). The Server reads the remaining output until end of file, but no longer than a grace period (RECOMMENDED 1 s, configurable), then sends TERMINAL_EXIT. Later output is discarded. Processes left running: §15.7.
 - TERMINAL_EXIT is the last message of the Server on the stream; the Server then ends its direction (FIN).
 - On attach to an Exited Session the Server sends TERMINAL_EXIT right after TERMINAL_ATTACHED. Last output: PD005.
-- A Session whose exit status was delivered to an Attachment SHOULD be removed (Terminated) at once; final rule: PD002.
+- A Session whose exit status was delivered to an Attachment becomes Terminated (§15.7).
 
 Close:
 | Situation | Behaviour |
@@ -671,7 +702,7 @@ Close:
 | process exited | Server: TERMINAL_EXIT, FIN; Client: FIN |
 | detach | Client: FIN; Server: FIN without TERMINAL_EXIT; the Session keeps running |
 | error | RESET_STREAM / STOP_SENDING with an error code (§13.1) |
-| Session terminated (PD002) | processes end; then as "process exited" |
+| Session terminated (§15.6) | processes end; then as "process exited" |
 
 - FIN from the Client means detach, not end of input (TERMINAL_EOF, §14.7). Detach is allowed with and without a PTY.
 - Messages of the Client that crossed TERMINAL_EXIT are ignored silently; they are not a protocol violation.
@@ -704,6 +735,46 @@ session-id = bstr .size 16
 ## 15.4	Session ID inside the Session
 - The Server SHOULD set the environment variable `STPT_SESSION` to the text form of the Session ID (§15.1) for the primary process of the Session, for `stpt` commands run inside it.
 - The variable grants no rights (§15.2). It is never taken from the environment field of terminal-open (§14.6).
+
+## 15.5	Creation and detach
+- A Session is created by opening a terminal Channel without a Session ID (§14.3); there is no separate create request. It is Running once its primary process has started. If the start fails, the Channel is rejected and the Session is Terminated before its ID was ever sent.
+- A Session that runs without an Attachment from the start is Client behaviour: the Client opens the Channel and ends it with FIN after TERMINAL_ATTACHED.
+- Detach is the Client FIN on the terminal Channel (§14.10); a closed Connection detaches as well. Other forms of detach: PD003.
+- While a Session has no Attachment, the Server MUST keep reading its output, so its processes never block on a full PTY or pipe. Output is discarded except what is kept for a later Attachment (PD005).
+
+## 15.6	Termination
+```
+session-terminate = [
+  type: SESSION_TERMINATE,      ; value 28 (§11.3)
+  body: {
+    0 => request-id,            ; §8.4
+    1 => session-id,
+    ? 2 => bool,                ; force: KILL at once
+    * int => any,
+  },
+]
+```
+- Only the owner Account may terminate a Session (§15.2); any other request is answered with SESSION_NOT_FOUND, as are unknown and Terminated Sessions.
+- Running: the Session becomes Terminating. The Server signals, with the permissions of the Account (§14.9), the processes of the Session: with a PTY HUP to all process groups of the PTY's terminal session, as a closed terminal would; without a PTY TERM to the process group of the command. Processes still running after the termination grace period (RECOMMENDED 5 s, configurable) receive KILL. With force set, KILL is sent at once.
+- Processes that left the terminal session or process group (e.g. by `setsid`, daemons) are not part of the Session and are not signalled.
+- When the processes have ended, the Session is Terminated: Attachments receive TERMINAL_EXIT and are closed as in §14.10, and the Server answers success. A process that cannot end after KILL (e.g. in an uninterruptible kernel wait) does not delay the result.
+- Terminating: a further request waits for the same end; with force set it sends KILL at once.
+- Exited: the Session is removed (Terminated) at once.
+
+## 15.7	Exit and removal
+- When the primary process exits, the Session becomes Exited (§14.10). The Server does not signal processes left running (e.g. started with `nohup` or in the background), neither at exit nor at removal; once the Session is Terminated, the Server closes its PTY and they are subject to the platform rules for a closed terminal.
+- An Exited Session becomes Terminated as soon as an Attachment has received TERMINAL_EXIT and ended its direction of the stream (FIN): the Client FIN confirms the delivery of the exit status.
+- If the Connection is lost before that FIN, or the Session had no Attachment when it exited, it stays Exited until a later Attachment confirms the exit status (§14.10), a termination request (§15.6), or Retention Policy (§15.8).
+
+## 15.8	Retention Policy and limits
+The Server alone sets Retention Policy (§4). RECOMMENDED defaults:
+| Session | Default |
+|---|---|
+| Running without an Attachment | no limit; the Server MAY set a maximum time, after which it terminates the Session as in §15.6 |
+| Exited, exit status not delivered | removed after 24 h |
+| Sessions of one Account, not Terminated | at most 64; a further create is rejected with LIMIT_EXCEEDED |
+
+- Sessions end when the Server stops; this version does not preserve them across a Server restart. Their IDs are then unknown (SESSION_NOT_FOUND) and never reused (§15.1).
 
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
@@ -739,6 +810,9 @@ Collected from all sections; consolidated in Tier PJ.
 - Explicit signals carry the Account's permissions, never those of the Server process, so they cannot reach processes the user could not signal locally (e.g. root processes started with `sudo`) (§14.9).
 - A bounded grace period after the primary process exits keeps background processes from holding a Channel open indefinitely (§14.10).
 - Random Session IDs are never reused, even across Server restarts, so input cannot go to a different Session that got the same ID (§15.1).
+- Requests have their own results and never close the Connection on failure (§8.4).
+- Session termination escalates to KILL after a bounded grace period and signals with the Account's permissions only (§15.6).
+- A limit of Sessions per Account bounds the resources an authenticated user can hold on the Server (§15.8).
 - A Session ID grants no access; an ID of another Account's Session is answered exactly as an unknown one, so Sessions of other Accounts cannot be probed (§15.2).
 
 # Document history
@@ -760,3 +834,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-15 (2026-10-13): exit status and Channel close (§14.10).
 - draft-16 (2026-10-13): Session ID, ownership, Session name (§15); error codes SESSION_NOT_FOUND, SESSION_NAME_IN_USE (§13.2).
 - draft-17 (2026-10-13): authentication checks completed before one decision (§12.4); rejection reasons in the Server log (§13.1).
+- draft-18 (2026-10-13): control requests and REQUEST_RESULT (§8.4); Session creation, detach, termination, exit and removal, Retention Policy (§15.5–§15.8); message types SESSION_TERMINATE, REQUEST_RESULT.

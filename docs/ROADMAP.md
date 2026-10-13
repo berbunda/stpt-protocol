@@ -28,7 +28,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 
 # 4	Tier PD — Session Model
 - [x] PD001  Session ID and ownership ✅ 2026-10-13
-- [ ] PD002  Session lifecycle: create, detach, terminate
+- [x] PD002  Session lifecycle: create, detach, terminate ✅ 2026-10-13
 - [ ] PD003  attach authorization, concurrent attachments
 - [ ] PD004  session list
 - [ ] PD005  reattach after Connection loss vs connection migration
