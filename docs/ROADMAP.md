@@ -31,7 +31,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PD002  Session lifecycle: create, detach, terminate ✅ 2026-10-13
 - [x] PD003  attach authorization, concurrent attachments ✅ 2026-10-13
 - [x] PD004  session list ✅ 2026-10-13
-- [ ] PD005  reattach after Connection loss vs connection migration
+- [x] PD005  reattach after Connection loss vs connection migration ✅ 2026-10-13
 
 # 5	Tier PE — File Transfer
 

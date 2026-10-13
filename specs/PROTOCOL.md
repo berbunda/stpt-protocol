@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-21 (2026-10-13). Changes: see Document history.
+Specification version: draft-22 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -113,7 +113,7 @@ Each Connection is one QUIC connection secured by TLS 1.3.
 
 ## 6.1	QUIC
 - Endpoints MUST support QUIC version 1 (RFC 9000, RFC 9001, RFC 9002). Other QUIC versions MAY be used if both Endpoints support them.
-- An Endpoint MAY migrate the Connection to a new network path; a Server MAY disable active migration (`disable_active_migration`). Migration does not change the Connection state (§3.1).
+- An Endpoint MAY migrate the Connection to a new network path. A Server MUST NOT disable active migration (`disable_active_migration`), so a Client keeps its Connection across a network change (§15.12). Migration does not change the Connection state (§3.1).
 - QUIC unreliable datagrams (RFC 9221) are not used.
 - Idle timeout and resource limits: §13.
 
@@ -534,6 +534,7 @@ terminal-attached = [
   body: {
     0 => session-id,            ; the attached Session (§15.1)
     1 => attachment-id,         ; this Attachment (§15.9)
+    2 => uint,                  ; output offset of the first output byte that follows (§15.11)
     * int => any,
   },
 ]
@@ -563,6 +564,7 @@ terminal-open body, continued:
     ? 6 => uint,                ; detach timeout in seconds (§15.8)
     ? 7 => uint,                ; attach mode: 0 shared (default), 1 takeover (§15.9)
     ? 8 => bool,                ; read-only Attachment (§15.9)
+    ? 9 => uint,                ; resume: output offset of the first byte not yet received (§15.11)
 
 pty-params = {
   0 => tstr,                    ; terminal type (TERM)
@@ -591,8 +593,8 @@ Environment:
 - A Client MUST NOT forward its whole environment; it sends only `LANG`, `LC_*` and variables configured explicitly for the Server.
 
 Attach:
-- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes, the attach mode and read-only are allowed; the size applies as a resize (§14.8, §15.9). Terminal type, command, environment, Session name and detach timeout MUST NOT be sent.
-- Attach mode and read-only MUST NOT be sent when creating a Session.
+- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes, the attach mode, read-only and resume are allowed; the size applies as a resize (§14.8, §15.9). Terminal type, command, environment, Session name and detach timeout MUST NOT be sent.
+- Attach mode, read-only and resume MUST NOT be sent when creating a Session.
 
 Validation:
 - A malformed or out-of-range parameter, or a forbidden parameter on attach, rejects the Channel with CHANNEL_REJECTED; exceeded environment limits with LIMIT_EXCEEDED (§8.3, §13.2).
@@ -702,7 +704,7 @@ terminal-exit = [
 Sending:
 - When the primary process (login shell or command) exits, the Session becomes Exited (§3.2). The Server reads the remaining output until end of file, but no longer than a grace period (RECOMMENDED 1 s, configurable), then sends TERMINAL_EXIT. Later output is discarded. Processes left running: §15.7.
 - TERMINAL_EXIT is the last message of the Server on the stream; the Server then ends its direction (FIN).
-- On attach to an Exited Session the Server sends TERMINAL_EXIT right after TERMINAL_ATTACHED. Last output: PD005.
+- On attach to an Exited Session the Server sends the replay of its last output (§15.11), then TERMINAL_EXIT.
 - A Session whose exit status was delivered to an Attachment becomes Terminated (§15.7).
 
 Close:
@@ -751,7 +753,7 @@ session-id = bstr .size 16
 - A Session is created by opening a terminal Channel without a Session ID (§14.3); there is no separate create request. It is Running once its primary process has started. If the start fails, the Channel is rejected and the Session is Terminated before its ID was ever sent.
 - A Session that runs without an Attachment from the start is Client behaviour: the Client opens the Channel and ends it with FIN after TERMINAL_ATTACHED.
 - Detach is the Client FIN on the terminal Channel (§14.10); a closed Connection detaches as well. Other forms of detach: §15.9.
-- While a Session has no Attachment, the Server MUST keep reading its output, so its processes never block on a full PTY or pipe. Output is discarded except what is kept for a later Attachment (PD005).
+- While a Session has no Attachment, the Server MUST keep reading its output, so its processes never block on a full PTY or pipe. Output is discarded except what the output buffer keeps (§15.11).
 
 ## 15.6	Termination
 ```
@@ -899,6 +901,26 @@ Fields:
 - Address: the Client address and UDP port of the Attachment's Connection as the Server sees them, the current ones after a migration. The Server MAY omit it by configuration.
 - Limits on names, labels, command and Attachments (§15.3, §15.9) keep one session-info well below the minimum message size (§13.4).
 
+## 15.11	Output buffer and replay
+Output buffer:
+- The Server keeps the most recent output of every Session in a buffer, with and without Attachments, until the Session is Terminated. RECOMMENDED size 256 KiB, configurable; 0 disables replay. Without a PTY it keeps standard output and error output in their order, each with its kind.
+- Output offset: output bytes are numbered from 0 at Session start, both kinds together, in the order the Server reads them. Output discarded after the exit grace period (§14.10) is not numbered.
+- A Client tracks the offset: the value of key 2 of TERMINAL_ATTACHED plus the bytes of every TERMINAL_DATA and TERMINAL_STDERR it has received since.
+
+Replay on attach:
+- After TERMINAL_ATTACHED the Server first sends replay from the buffer, then live output, without a gap or overlap between them. Key 2 of TERMINAL_ATTACHED is the offset of the first byte that follows. Replay uses TERMINAL_DATA and TERMINAL_STDERR as the original output did.
+- Resume (key 9 of terminal-open present): replay starts at the given offset if the buffer still holds it, otherwise at the start of the buffer; the Client learns the lost amount from key 2 and SHOULD tell the user. An offset beyond the current end of output rejects the Channel with CHANNEL_REJECTED.
+- Fresh attach (key 9 absent): replay is the tail of the buffer, at most the fresh replay limit (RECOMMENDED 16 KiB, configurable), starting after the first line feed in that tail, so it does not start inside an escape sequence; without a line feed in the tail nothing is replayed.
+- Redraw: on a fresh attach, and on a resume that lost output, the Server sends SIGWINCH to the foreground process group of the PTY even if the size has not changed, so full-screen programs redraw the screen. Not on a resume without loss, which continues the screen as it was.
+- Exited Session: the same replay, then TERMINAL_EXIT (§14.10).
+- The Server does not interpret output: it keeps no screen state and runs no terminal emulator.
+
+## 15.12	Connection migration and reattach
+- A network change of the Client (e.g. Wi-Fi to mobile) is QUIC connection migration (RFC 9000 §9): the Connection and its Attachments continue; nothing happens at the STPT level (§6.1). This holds while the outage is shorter than the idle timeout (§13.3).
+- After the loss of a Connection the Client opens a new Connection, authenticates fully (§12; resumption never restores authentication, §6.2) and attaches to the Session with resume (§15.11). There is no resume token that would grant access without the user key.
+- The old Attachment stays until the Server notices the loss (idle timeout or stall limit, §13.3). The Client MAY end it at once with SESSION_DETACH and its old Attachment ID (§15.9). It SHOULD NOT use the takeover mode for this, which would also end the Attachments of other devices.
+- When to reattach automatically, how often to retry and how to show it to the user is Client behaviour.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -939,6 +961,9 @@ Collected from all sections; consolidated in Tier PJ.
 - A stalled Client is detached after a bounded time, so it cannot block the processes of a Session or the other Attachments (§15.9).
 - Read-only Attachments prevent accidental input but are not a security boundary within an Account (§15.9).
 - The Session list shows only the Sessions of the Account; Attachment addresses and commands are visible to every key of that Account, which matters for Accounts shared by several people (§15.10).
+- The output buffer keeps recent output, including secrets shown on screen, in Server memory until the Session ends and replays it to any Attachment of the Account; its size is bounded (§15.11).
+- Replay needs no terminal emulator on the Server: no parser of hostile output, no extra attack surface (§15.11).
+- Reattach after a lost Connection requires full user authentication; there is no resume token to steal (§15.12).
 - A Session ID grants no access; an ID of another Account's Session is answered exactly as an unknown one, so Sessions of other Accounts cannot be probed (§15.2).
 
 # Document history
@@ -964,3 +989,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-19 (2026-10-13): detach timeout requested by the Client (§14.6, §15.8).
 - draft-20 (2026-10-13): attach authorization, Attachment ID, several Attachments, attach modes shared and takeover, read-only, terminal size, stalled Attachments, detach request (§15.9); message type SESSION_DETACH; error code ATTACHMENT_NOT_FOUND.
 - draft-21 (2026-10-13): Session list with Attachments, paging (§15.10); message type SESSION_LIST.
+- draft-22 (2026-10-13): output buffer, output offsets, replay and resume, redraw on attach (§15.11); connection migration required, reattach after Connection loss (§6.1, §15.12).
