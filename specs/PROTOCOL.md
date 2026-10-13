@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-19 (2026-10-13). Changes: see Document history.
+Specification version: draft-20 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -44,7 +44,7 @@ Client ──── Connection ──── Server
 - A Connection has at most one Authentication Context, established by user authentication (§12).
 - A Connection carries Channels; each Channel uses one or more Streams.
 - A Server hosts zero or more Sessions; each Session is owned by exactly one Account.
-- An Attachment links one Connection with one Session and requires an Authentication Context on that Connection. The number of Attachments per Connection and per Session: PD003.
+- An Attachment links one Connection with one Session and requires an Authentication Context on that Connection. A Connection has at most one Attachment per Session; a Session may have several (§15.9).
 - The end of a Connection ends its Channels and Attachments, but not its Sessions. A Session ends by exit, termination or Retention Policy (§3.2, §15.6–§15.8).
 
 # 3	State model
@@ -85,7 +85,7 @@ The Server holds the authoritative Session state.
 ## 3.3	Attachment
 `Active → Ended`.
 - An Attachment comes into existence Active only after successful authorization; there is no pending state.
-- End reasons: detach, Connection closed, Session Terminated, permissions revoked.
+- End reasons: detach (by its Client, by a detach request or by a takeover), Connection closed, stalled stream, Session Terminated, permissions revoked.
 
 ## 3.4	Invariants
 - An Attachment is Active only while its Connection is Authenticated and its Session is Running or Exited.
@@ -359,6 +359,7 @@ Assigned core types:
 | 27 | TERMINAL_EXIT | §14.10 |
 | 28 | SESSION_TERMINATE | §15.6 |
 | 29 | REQUEST_RESULT | §8.4 |
+| 30 | SESSION_DETACH | §15.9 |
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -459,12 +460,13 @@ Errors use QUIC mechanisms; there is no error message:
 | 2 | INTERNAL_ERROR | Connection, stream | local failure |
 | 3 | VERSION_NEGOTIATION_FAILED | Connection | no common wire version (§11.1) |
 | 4 | AUTH_FAILED | Connection | authentication attempts exhausted (§12.4) |
-| 5 | TIMEOUT | Connection | a deadline of §13.3 expired |
+| 5 | TIMEOUT | Connection, stream | a deadline of §13.3 expired |
 | 6 | LIMIT_EXCEEDED | Connection, stream, request | a limit of §13.4 exceeded |
 | 7 | CHANNEL_REJECTED | stream | CHANNEL_OPEN rejected (§8.3) |
 | 8 | SERVER_SHUTDOWN | Connection | the Server is shutting down |
 | 9 | SESSION_NOT_FOUND | stream, request | no Session with this ID for the Account (§15.2) |
 | 10 | SESSION_NAME_IN_USE | stream | the Session name is taken (§15.3) |
+| 11 | ATTACHMENT_NOT_FOUND | request | no Attachment with this ID in the Session (§15.9) |
 
 Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above are for private and experimental use.
 
@@ -474,6 +476,7 @@ Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above ar
 | CLIENT_HELLO received by the Server after the handshake | 10 s | Server closes with TIMEOUT |
 | Connection Authenticated after it becomes Established | 60 s | Server closes with TIMEOUT |
 | QUIC idle timeout (`max_idle_timeout`) | 60 s | Connection closed silently (RFC 9000 §10.1) |
+| progress of a stalled terminal stream | 10 s | Server ends the Attachment with TIMEOUT (§15.9) |
 
 - Defaults are RECOMMENDED; a Server MAY configure other values.
 - A Client SHOULD send QUIC PING frames when the Connection has been idle for 15 s, so an idle terminal keeps its Connection. Session survival does not depend on this (§3.4).
@@ -489,7 +492,7 @@ limits = {
 - CBOR nesting depth: every Endpoint MUST accept a depth of 16; messages defined by this specification never exceed it.
 - Account name: at most 256 bytes.
 - Terminal parameters and environment: §14.6.
-- Outstanding requests per Connection: §8.4. Sessions per Account: §15.8.
+- Outstanding requests per Connection: §8.4. Sessions per Account: §15.8. Attachments per Session: §15.9.
 - Failed authentication attempts per Connection: default 6; a Server MAY use a lower value.
 - A violated limit is answered with LIMIT_EXCEEDED.
 
@@ -529,11 +532,12 @@ terminal-attached = [
   type: TERMINAL_ATTACHED,      ; value 6 (§11.3)
   body: {
     0 => session-id,            ; the attached Session (§15.1)
+    1 => attachment-id,         ; this Attachment (§15.9)
     * int => any,
   },
 ]
 ```
-- The Server checks the Authentication Context and authorizes the create or attach (PD003). On success its first message on the stream is TERMINAL_ATTACHED; on failure it rejects the Channel (§8.3). An unknown Session ID is rejected with SESSION_NOT_FOUND (§15.2).
+- The Server checks the Authentication Context and authorizes the create or attach (§15.9). On success its first message on the stream is TERMINAL_ATTACHED; on failure it rejects the Channel (§8.3). An unknown Session ID is rejected with SESSION_NOT_FOUND (§15.2).
 - The Client MUST NOT send any further message on the stream before TERMINAL_ATTACHED.
 - A Connection MUST NOT have two terminal Channels attached to the same Session; the Server rejects the second CHANNEL_OPEN.
 - Terminating a Session is not a Channel operation; it is a request on the control Channel (§15.6).
@@ -556,6 +560,8 @@ terminal-open body, continued:
     ? 4 => { * tstr => tstr },  ; environment
     ? 5 => tstr,                ; Session name (§15.3)
     ? 6 => uint,                ; detach timeout in seconds (§15.8)
+    ? 7 => uint,                ; attach mode: 0 shared (default), 1 takeover (§15.9)
+    ? 8 => bool,                ; read-only Attachment (§15.9)
 
 pty-params = {
   0 => tstr,                    ; terminal type (TERM)
@@ -584,7 +590,8 @@ Environment:
 - A Client MUST NOT forward its whole environment; it sends only `LANG`, `LC_*` and variables configured explicitly for the Server.
 
 Attach:
-- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes are allowed; they apply as a resize (§14.8). Terminal type, command, environment, Session name and detach timeout MUST NOT be sent.
+- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes, the attach mode and read-only are allowed; the size applies as a resize (§14.8, §15.9). Terminal type, command, environment, Session name and detach timeout MUST NOT be sent.
+- Attach mode and read-only MUST NOT be sent when creating a Session.
 
 Validation:
 - A malformed or out-of-range parameter, or a forbidden parameter on attach, rejects the Channel with CHANNEL_REJECTED; exceeded environment limits with LIMIT_EXCEEDED (§8.3, §13.2).
@@ -637,7 +644,7 @@ terminal-resize = [
 - Only the Client sends TERMINAL_RESIZE, and only on a Channel with a PTY; otherwise it is a protocol violation (§0.2). There is no reply.
 - The Server applies the size to the PTY (e.g. `TIOCSWINSZ` on Unix-like systems, which delivers SIGWINCH to the foreground process group). The Server cannot change the size of the Client window.
 - A Client SHOULD coalesce bursts of size changes and send only the latest size. A Server MAY apply only the last of several resizes queued without data between them, and MAY limit the rate at which it applies them.
-- With one Attachment the size applies directly. The size given on attach (§14.6) is handled as a resize. Choice of size with several Attachments: PD003.
+- With one Attachment the size applies directly. The size given on attach (§14.6) is handled as a resize. Choice of size with several Attachments: §15.9.
 
 ## 14.9	Signals
 ```
@@ -702,6 +709,8 @@ Close:
 |---|---|
 | process exited | Server: TERMINAL_EXIT, FIN; Client: FIN |
 | detach | Client: FIN; Server: FIN without TERMINAL_EXIT; the Session keeps running |
+| detach by the Server (takeover, detach request, §15.9) | Server: FIN without TERMINAL_EXIT; Client: FIN |
+| stalled stream (§15.9) | Server: RESET_STREAM with TIMEOUT |
 | error | RESET_STREAM / STOP_SENDING with an error code (§13.1) |
 | Session terminated (§15.6) | processes end; then as "process exited" |
 
@@ -783,6 +792,49 @@ Detach timeout:
 
 - Sessions end when the Server stops; this version does not preserve them across a Server restart. Their IDs are then unknown (SESSION_NOT_FOUND) and never reused (§15.1).
 
+## 15.9	Attachments
+```
+attachment-id = uint
+
+session-detach = [
+  type: SESSION_DETACH,         ; value 30 (§11.3)
+  body: {
+    0 => request-id,            ; §8.4
+    1 => session-id,
+    ? 2 => attachment-id,       ; absent: all Attachments
+    * int => any,
+  },
+]
+```
+Authorization:
+- Only Connections authenticated for the owner Account attach (§15.2). Attach is possible to a Running or Exited Session; a Terminating, Terminated, unknown or foreign Session is answered with SESSION_NOT_FOUND.
+- Restrictions by key within an Account: Tier PI.
+
+Attachment ID:
+- The Server assigns an Attachment ID at create and at attach and returns it in TERMINAL_ATTACHED (§14.3). It is unique within the Session and never reused in it. Attachments of a Session are listed with the Session (PD004).
+
+Several Attachments:
+- A Session MAY have several Attachments, at most one per Connection (§14.3). The Server limits them per Session (RECOMMENDED 8) and rejects a further attach with LIMIT_EXCEEDED.
+- Attach mode (key 7 of terminal-open): shared (0, default) adds the Attachment to the existing ones; takeover (1) first ends all other Attachments of the Session as a detach by the Server (§14.10), then attaches.
+- The Server sends output to every Attachment. Input and signals of all Attachments that are not read-only are applied in the order they reach the Server; there is no order between Attachments. TERMINAL_EOF from any of them ends the input of the command.
+
+Read-only:
+- A read-only Attachment (key 8 of terminal-open) receives output only. Its Client MUST NOT send TERMINAL_DATA, TERMINAL_EOF, TERMINAL_RESIZE or TERMINAL_SIGNAL; doing so is a protocol violation.
+- Read-only is a convenience against accidental input, not a security boundary: the same Account may attach with full access.
+
+Terminal size:
+- The PTY has the size of the last active Attachment: the one that most recently attached, sent TERMINAL_DATA or sent TERMINAL_RESIZE. The Server keeps the last size of every Attachment and applies the size of the active one when it changes (§14.8).
+- A read-only Attachment never becomes active, and its size is never applied.
+
+Stalled Attachment:
+- Output proceeds at the pace of the slowest Attachment (§14.7). If the Server cannot send on the stream of an Attachment because of flow control for longer than the stall limit (RECOMMENDED 10 s, configurable), it ends that Attachment with RESET_STREAM and TIMEOUT. The other Attachments and the Session continue, so a stalled Client (e.g. a suspended process) never blocks the processes of the Session.
+- This applies to a single Attachment as well. A slow but progressing stream is not stalled.
+
+Detach request:
+- SESSION_DETACH ends one Attachment of the Session, given by its ID, or all of them. The detached Clients see a detach by the Server (§14.10). The Server answers once those Attachments have ended.
+- Only the owner Account may send it (§15.2). An unknown Session is answered with SESSION_NOT_FOUND, an unknown Attachment ID with ATTACHMENT_NOT_FOUND.
+- There is no request to detach "all but the current one": it would be a command from inside the Session controlling Attachments (DECISIONS.md §8). The same intent is expressed at attach by the takeover mode.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -820,6 +872,8 @@ Collected from all sections; consolidated in Tier PJ.
 - Requests have their own results and never close the Connection on failure (§8.4).
 - Session termination escalates to KILL after a bounded grace period and signals with the Account's permissions only (§15.6).
 - A limit of Sessions per Account bounds the resources an authenticated user can hold on the Server (§15.8).
+- A stalled Client is detached after a bounded time, so it cannot block the processes of a Session or the other Attachments (§15.9).
+- Read-only Attachments prevent accidental input but are not a security boundary within an Account (§15.9).
 - A Session ID grants no access; an ID of another Account's Session is answered exactly as an unknown one, so Sessions of other Accounts cannot be probed (§15.2).
 
 # Document history
@@ -843,3 +897,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-17 (2026-10-13): authentication checks completed before one decision (§12.4); rejection reasons in the Server log (§13.1).
 - draft-18 (2026-10-13): control requests and REQUEST_RESULT (§8.4); Session creation, detach, termination, exit and removal, Retention Policy (§15.5–§15.8); message types SESSION_TERMINATE, REQUEST_RESULT.
 - draft-19 (2026-10-13): detach timeout requested by the Client (§14.6, §15.8).
+- draft-20 (2026-10-13): attach authorization, Attachment ID, several Attachments, attach modes shared and takeover, read-only, terminal size, stalled Attachments, detach request (§15.9); message type SESSION_DETACH; error code ATTACHMENT_NOT_FOUND.
