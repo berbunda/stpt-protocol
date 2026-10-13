@@ -108,6 +108,7 @@ Keystroke recording is not a reliable log of executed shell commands; secret han
   ```
 - ✅ 2026-10-13 Explicit detach is Client behaviour, not protocol (the protocol only defines Client FIN = detach, PROTOCOL.md §14.10). The `stpt` console Client intercepts an escape sequence, ssh-style `Enter ~ .` (`~~` sends `~`, `~?` help, escape character configurable or disabled); final key choice during the test implementation (RD002). Graphical Clients use their own controls. Escape sequences are a feature of a client program, not of a protocol (e.g. Termius does not implement OpenSSH `~.`).
 - ✅ 2026-10-13 Rejected: detach by a command inside the Session (`stpt detach --current-session`): works only at a shell prompt, lets any process in the Session control Attachments (trust boundary), and cannot tell which of several Attachments to end.
+- ✅ 2026-10-13 Closing the local terminal window detaches; detached Sessions are kept and can accumulate. The user documentation (help, man, README) MUST say so: the user is expected to know the program. The Client configuration has a detach timeout sent at Session creation; the Server applies the smaller of it and its own policy (PROTOCOL.md §15.8).
 - ❓ Detach of an Attachment from another window of the same local user through a control request, and Server-initiated detach in general (not yet in PROTOCOL.md §14.10): PD003.
 
 # 9	Versioning and terminology

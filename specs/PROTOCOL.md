@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-18 (2026-10-13). Changes: see Document history.
+Specification version: draft-19 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -555,6 +555,7 @@ terminal-open body, continued:
     ? 3 => command,             ; absent: login shell of the Account
     ? 4 => { * tstr => tstr },  ; environment
     ? 5 => tstr,                ; Session name (§15.3)
+    ? 6 => uint,                ; detach timeout in seconds (§15.8)
 
 pty-params = {
   0 => tstr,                    ; terminal type (TERM)
@@ -583,7 +584,7 @@ Environment:
 - A Client MUST NOT forward its whole environment; it sends only `LANG`, `LC_*` and variables configured explicitly for the Server.
 
 Attach:
-- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes are allowed; they apply as a resize (§14.8). Terminal type, command, environment and Session name MUST NOT be sent.
+- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes are allowed; they apply as a resize (§14.8). Terminal type, command, environment, Session name and detach timeout MUST NOT be sent.
 
 Validation:
 - A malformed or out-of-range parameter, or a forbidden parameter on attach, rejects the Channel with CHANNEL_REJECTED; exceeded environment limits with LIMIT_EXCEEDED (§8.3, §13.2).
@@ -774,6 +775,12 @@ The Server alone sets Retention Policy (§4). RECOMMENDED defaults:
 | Exited, exit status not delivered | removed after 24 h |
 | Sessions of one Account, not Terminated | at most 64; a further create is rejected with LIMIT_EXCEEDED |
 
+Detach timeout:
+- A Client MAY request at creation (key 6 of terminal-open, §14.6) how long the Session may stay without an Attachment, in seconds. The Server applies the smaller of this value and its own policy. The Client cannot extend the Server policy.
+- The time runs from the end of the last Attachment and restarts with every new detach. When it expires, a Running Session is terminated as in §15.6 and an Exited Session is removed.
+- 0: the Session ends as soon as it has no Attachment, also after a lost Connection.
+- In this version the detach timeout is set only at creation.
+
 - Sessions end when the Server stops; this version does not preserve them across a Server restart. Their IDs are then unknown (SESSION_NOT_FOUND) and never reused (§15.1).
 
 # Security Considerations
@@ -835,3 +842,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-16 (2026-10-13): Session ID, ownership, Session name (§15); error codes SESSION_NOT_FOUND, SESSION_NAME_IN_USE (§13.2).
 - draft-17 (2026-10-13): authentication checks completed before one decision (§12.4); rejection reasons in the Server log (§13.1).
 - draft-18 (2026-10-13): control requests and REQUEST_RESULT (§8.4); Session creation, detach, termination, exit and removal, Retention Policy (§15.5–§15.8); message types SESSION_TERMINATE, REQUEST_RESULT.
+- draft-19 (2026-10-13): detach timeout requested by the Client (§14.6, §15.8).
