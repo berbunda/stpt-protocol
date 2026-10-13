@@ -44,6 +44,7 @@ Do not create differences for the sake of differences.
 - ✅ 2026-10-13 Attachments (PROTOCOL.md §15.9): attach only by the owner Account, to Running or Exited Sessions; several Attachments per Session (default 8), both modes available and chosen per attach: shared (default, as `tmux attach`) and takeover (as `tmux attach -d`); read-only Attachments as a convenience, not a boundary; terminal size of the last active Attachment (as tmux 3.1+, "smallest" rejected: one small window shrinks everyone); input of all Attachments merged in arrival order; an Attachment stalled by flow control for 10 s is reset with TIMEOUT, so a stalled Client never blocks the Session.
 - ✅ 2026-10-13 Session list (PROTOCOL.md §15.10): own Account only, states Running, Exited, Terminating; one Session by ID or all, paged by Session ID to fit the message size; fields: ID, name, state, creation time, creating key and its Server label, PTY, command for display (cut to 256 bytes), exit status (listing does not count as delivery), removal time, Attachments with ID, time, key, label, read-only, active, Client address. Address shown since `who`/`last` show it even to other Accounts; drawback accepted: members of a shared Account see each other's addresses.
 - ✅ 2026-10-13 Reattach (PROTOCOL.md §15.11, §15.12): the Server must allow QUIC migration, so a network change keeps the Connection; after a lost Connection a new one with full authentication, no resume token; the Client may detach its own old Attachment by ID, not by takeover. The Server always keeps a raw output ring buffer (256 KiB) with offsets counted from Session start; resume by offset continues without loss or duplicates (as Eternal Terminal); a fresh attach replays at most 16 KiB from the first line feed, then SIGWINCH makes full-screen programs redraw. A Server-side terminal emulator (as tmux) rejected: a full escape-sequence parser is attack surface and would have to be specified. The same buffer gives the last output of an Exited Session. Loss detection and retries are Client behaviour (RD007).
+- ✅ 2026-10-13 File transfer includes file management (as sftp, not only scp); all operations run with the Account's permissions, no elevation through the protocol (PE002).
 - ✅ 2026-10-13 Client exit code of `stpt exec`: the remote exit code; 128 + local signal number if terminated by a signal; 255 on an STPT or Connection error (as ssh).
 - SSH already multiplexes channels. The QUIC advantage is, among others, independent loss recovery per stream.
 
@@ -63,9 +64,9 @@ Do not create differences for the sake of differences.
 # 6	Authentication and security
 - No custom cryptographic algorithms; only proven TLS and cryptographic implementations.
 - ✅ 2026-10-11 Server identity: Ed25519 key presented as a TLS Raw Public Key (RFC 7250), no X.509; fingerprint `SHA256:<base64>` over SPKI, always compared in full; TOFU with SSH known_hosts-like UX, keyed by address and port; first contact needs user confirmation or an out-of-band fingerprint; a changed key aborts the Connection (PROTOCOL.md §9).
-- ❓ Server key rotation (e.g. new key signed by the old one, sent after the handshake): postponed.
-- ❓ Post-quantum or hybrid Server Identity keys (e.g. ML-DSA).
-- ❓ CA model with X.509 certificates as an alternative to TOFU.
+- ❓ Server key rotation (e.g. new key signed by the old one, sent after the handshake): ✅ 2026-10-13 needed, also for the move to post-quantum keys: PI003.
+- ❓ Post-quantum or hybrid Server Identity keys (e.g. ML-DSA): ✅ 2026-10-13 needed: PI005.
+- ❓ CA model with X.509 certificates as an alternative to TOFU: ✅ 2026-10-13 needed with low priority (an organization's own CA for Server and short-lived user certificates, for many Servers and users): PI006.
 - ✅ 2026-10-10 User authentication happens at the STPT application layer after the TLS handshake. The client proves possession of its key by signing a value obtained from the TLS exporter of the current Connection (channel binding), so the proof cannot be reused on another Connection.
 - ✅ 2026-10-11 User authentication: only Ed25519 public keys; one-step AUTH_REQUEST with a signature over a CBOR structure containing a TLS exporter value (label `EXPORTER-STPT-user-auth`); no key probing; uniform failure; the Account of a Connection never changes (PROTOCOL.md §12).
 - ✅ 2026-10-13 Rejection diagnostics: all checks of AUTH_REQUEST are performed before one decision, the signature is verified even for a nonexistent Account (no timing leak); exact rejection reasons go only to the Server log (PROTOCOL.md §12.4, §13.1). Rejected: a switchable "strict" mode with one message for every refusal, and rejection deferred over all login stages until a final check. Stages before authentication hold no secrets (the specification and code are public, Kerckhoffs), some cannot be passed without agreement (no common TLS algorithm or version), continuing after a violation breaks fail closed and holds resources for every bot (DoS), the stage is visible from the message sequence anyway, and legitimate users would lose diagnostics such as a version mismatch; after authentication the peer already holds the Account.
@@ -73,7 +74,8 @@ Do not create differences for the sake of differences.
 - Short-lived certificates, CA: promising, not required for the first MVP. Hybrid post-quantum key exchange: see §5.
 - Authorization of Session attach and of client file system operations must be defined explicitly.
 - The server never gets access to client files merely because a Connection exists.
-- ❓ Security model of mounting a client directory on the server (reverse mount) requires a separate analysis.
+- ❓ Security model of mounting a client directory on the server (reverse mount) requires a separate analysis: PF004.
+  - ✅ 2026-10-13 Direction: the Client warns that root on the Server can read the mounted files and requires an explicit `yes`; the mount ends at detach or Session end.
 
 # 7	Features
 Core:
@@ -87,6 +89,7 @@ Later:
 - mounting a client directory on the server (Linux FUSE; Windows needs a separate solution);
 - session audit and terminal I/O recording;
 - port forwarding;
+  - ✅ 2026-10-13 Local, remote and dynamic (SOCKS) forwarding; UDP forwarding only on request (roadmap backlog), as ssh has none.
 - additional identity, deployment and hardening models.
 
 Keystroke recording is not a reliable log of executed shell commands; secret handling and audit boundaries need separate design.
@@ -96,7 +99,8 @@ Keystroke recording is not a reliable log of executed shell commands; secret han
   - query sequences whose replies come back as input (window title, status reports): with a title set beforehand this is command injection (past CVEs in xterm, iTerm2 and others);
   - OSC 8 hyperlinks whose visible text differs from the target.
   - ✅ 2026-10-13 No filtering in the protocol and no full escape-sequence parser: the Server cannot tell legitimate from hostile sequences, and a complex parser is new attack surface. Direction for PJ: an optional Client-side block of a small set of dangerous sequences (OSC 52 writes, queries with replies), leaving everything else intact; not applied when output goes to a file or pipe.
-- ❓ How to extract commands reliably (raw keystrokes vs shell integration such as OSC 133 prompt marks): Tier PH.
+- ❓ How to extract commands reliably (raw keystrokes vs shell integration such as OSC 133 prompt marks): PH003.
+  - ✅ 2026-10-13 Password exclusion is detected by the terminal mode, not by prompt text: input while the PTY has echo off is never recorded (sudo, passwd, `read -s`). Keystrokes cannot reconstruct commands (completion, history recall, line editing), so if keystroke history proves unreliable it is dropped and only the command history is kept.
 
 # 8	CLI
 - ✅ 2026-10-10 Commands are explicit: every operation has its own subcommand; no implicit forms such as `stpt user@host`.
@@ -119,6 +123,7 @@ Keystroke recording is not a reliable log of executed shell commands; secret han
 - ✅ 2026-10-11 Requirements language BCP 14 (RFC 2119, RFC 8174); security requirements only as MUST / MUST NOT; OPTIONAL features never lower security; peer input untrusted, violations fail closed (PROTOCOL.md §0).
 - ✅ 2026-10-11 Wire protocol version is a single integer; optional features via capabilities; draft versions disjoint from final; no fallback to a lower version; deprecated versions are never offered (PROTOCOL.md §5).
 - ✅ 2026-10-11 The ALPN token is `stpt` without a version; the version is negotiated inside TLS (PROTOCOL.md §6.3).
+- ✅ 2026-10-13 Tiers PE–PK and RE–RK filled with items; each roadmap has a backlog for items taken up only on request.
 - ✅ 2026-10-11 The roadmap is split into two tracks: protocol (P, docs/ROADMAP.md) and realisation (R, stpt/docs/ROADMAP.md). R items depend on P items explicitly; the protocol is specified ahead of the implementation.
 - Tiers, items and gates: see docs/RULES.md §1.4, docs/ROADMAP.md, stpt/docs/ROADMAP.md, docs/GATES.md.
 

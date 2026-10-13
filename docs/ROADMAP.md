@@ -34,15 +34,52 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PD005  reattach after Connection loss vs connection migration ✅ 2026-10-13
 
 # 5	Tier PE — File Transfer
+- [ ] PE001  file transfer Channel ➕ 2026-10-13
+- [ ] PE002  file operations: transfer and management, with the Account's permissions ➕ 2026-10-13
+- [ ] PE003  data transfer: chunking, integrity, large files ➕ 2026-10-13
+- [ ] PE004  resume of interrupted transfers ➕ 2026-10-13
+- [ ] PE005  file metadata and paths across platforms ➕ 2026-10-13
 
 # 6	Tier PF — Client-side File Access
+- [ ] PF001  trust model and permission grants ➕ 2026-10-13
+- [ ] PF002  requests from inside a Session to the Client ➕ 2026-10-13
+- [ ] PF003  Server-opened Channel for client file access ➕ 2026-10-13
+- [ ] PF004  client directory mount: explicit consent, unmount on detach or Session end ➕ 2026-10-13
 
 # 7	Tier PG — Port Forwarding
+- [ ] PG001  local forwarding; binding to Connection or Session ➕ 2026-10-13
+- [ ] PG002  remote forwarding ➕ 2026-10-13
+- [ ] PG003  dynamic forwarding (SOCKS) ➕ 2026-10-13
+- [ ] PG004  Server forwarding policy ➕ 2026-10-13
 
 # 8	Tier PH — Audit
+- [ ] PH001  audit events ➕ 2026-10-13
+- [ ] PH002  terminal I/O recording ➕ 2026-10-13
+- [ ] PH003  Session command history ➕ 2026-10-13
+- [ ] PH004  protection of audit records ➕ 2026-10-13
 
 # 9	Tier PI — Authentication / Identity
+- [ ] PI001  user keys on the Server: format, labels ➕ 2026-10-13
+- [ ] PI002  access rights within an Account ➕ 2026-10-13
+- [ ] PI003  Server key rotation ➕ 2026-10-13
+- [ ] PI004  hardware keys (FIDO2) ➕ 2026-10-13
+- [ ] PI005  post-quantum identity keys ➕ 2026-10-13
+- [ ] PI006  certificates and CA ➕ 2026-10-13
 
 # 10	Tier PJ — Security Considerations
+- [ ] PJ001  threat model ➕ 2026-10-13
+- [ ] PJ002  consolidated security considerations ➕ 2026-10-13
+- [ ] PJ003  Client protection against hostile escape sequences ➕ 2026-10-13
+- [ ] PJ004  denial of service analysis ➕ 2026-10-13
+- [ ] PJ005  metadata leaks: keystroke timing ➕ 2026-10-13
 
 # 11	Tier PK — Interoperability / Test Vectors
+- [ ] PK001  complete CDDL schema ➕ 2026-10-13
+- [ ] PK002  test vectors ➕ 2026-10-13
+- [ ] PK003  conformance scenarios ➕ 2026-10-13
+- [ ] PK004  criteria for version 1.0, first final wire version ➕ 2026-10-13
+- [ ] PK005  IANA registration: ALPN, port ➕ 2026-10-13
+
+# 12	Backlog — on request
+Items taken up only when users ask for them.
+- [ ] PG005  UDP forwarding ➕ 2026-10-13
