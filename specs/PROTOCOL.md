@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-15 (2026-10-13). Changes: see Document history.
+Specification version: draft-16 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -90,7 +90,7 @@ The Server holds the authoritative Session state.
 ## 3.4	Invariants
 - An Attachment is Active only while its Connection is Authenticated and its Session is Running or Exited.
 - Closing a Connection ends all its Attachments but does not change the state of any Session.
-- Closed and Terminated are final; a Session ID is never reused.
+- Closed and Terminated are final; a Session ID is never reused (§15.1).
 
 # 4	Responsibility boundaries
 - The Server is the authority for Session and Attachment state; the Client holds a copy.
@@ -431,6 +431,8 @@ Errors use QUIC mechanisms; there is no error message:
 | 6 | LIMIT_EXCEEDED | Connection, stream | a limit of §13.4 exceeded |
 | 7 | CHANNEL_REJECTED | stream | CHANNEL_OPEN rejected (§8.3) |
 | 8 | SERVER_SHUTDOWN | Connection | the Server is shutting down |
+| 9 | SESSION_NOT_FOUND | stream | no Session with this ID for the Account (§15.2) |
+| 10 | SESSION_NAME_IN_USE | stream | the Session name is taken (§15.3) |
 
 Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above are for private and experimental use.
 
@@ -485,7 +487,7 @@ terminal-open = [
   type: CHANNEL_OPEN,
   body: {
     0 => 1,                     ; channel kind: terminal
-    1 => session-id / null,     ; null: create a new Session; session-id: attach (PD001)
+    1 => session-id / null,     ; null: create a new Session; session-id: attach (§15.1)
     * int => any,               ; terminal parameters: §14.6
   },
 ]
@@ -493,12 +495,12 @@ terminal-open = [
 terminal-attached = [
   type: TERMINAL_ATTACHED,      ; value 6 (§11.3)
   body: {
-    0 => session-id,            ; the attached Session (PD001)
+    0 => session-id,            ; the attached Session (§15.1)
     * int => any,
   },
 ]
 ```
-- The Server checks the Authentication Context and authorizes the create or attach (PD003). On success its first message on the stream is TERMINAL_ATTACHED; on failure it rejects the Channel (§8.3).
+- The Server checks the Authentication Context and authorizes the create or attach (PD003). On success its first message on the stream is TERMINAL_ATTACHED; on failure it rejects the Channel (§8.3). An unknown Session ID is rejected with SESSION_NOT_FOUND (§15.2).
 - The Client MUST NOT send any further message on the stream before TERMINAL_ATTACHED.
 - A Connection MUST NOT have two terminal Channels attached to the same Session; the Server rejects the second CHANNEL_OPEN.
 - Terminating a Session is not a Channel operation; it is a request on the control Channel (PD002).
@@ -519,6 +521,7 @@ terminal-open body, continued:
     ? 2 => pty-params,          ; present: create a PTY
     ? 3 => command,             ; absent: login shell of the Account
     ? 4 => { * tstr => tstr },  ; environment
+    ? 5 => tstr,                ; Session name (§15.3)
 
 pty-params = {
   0 => tstr,                    ; terminal type (TERM)
@@ -543,11 +546,11 @@ PTY:
 
 Environment:
 - Names are non-empty and contain neither `=` nor NUL; values contain no NUL. At most 64 variables; a name or a value at most 4096 bytes.
-- The Server applies only variables on its allowlist and silently ignores the rest. The default allowlist is `LANG` and `LC_*`. `TERM` is never taken from the environment field.
+- The Server applies only variables on its allowlist and silently ignores the rest. The default allowlist is `LANG` and `LC_*`. `TERM` and `STPT_SESSION` (§15.4) are never taken from the environment field.
 - A Client MUST NOT forward its whole environment; it sends only `LANG`, `LC_*` and variables configured explicitly for the Server.
 
 Attach:
-- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes are allowed; they apply as a resize (§14.8). Terminal type, command and environment MUST NOT be sent.
+- When attaching to an existing Session (`1 => session-id`), only `pty-params` columns, rows and pixel sizes are allowed; they apply as a resize (§14.8). Terminal type, command, environment and Session name MUST NOT be sent.
 
 Validation:
 - A malformed or out-of-range parameter, or a forbidden parameter on attach, rejects the Channel with CHANNEL_REJECTED; exceeded environment limits with LIMIT_EXCEEDED (§8.3, §13.2).
@@ -672,6 +675,34 @@ Close:
 - Messages of the Client that crossed TERMINAL_EXIT are ignored silently; they are not a protocol violation.
 - Every close ends the Attachment and never changes the Session state by itself (§3.4).
 
+# 15	Session model
+
+## 15.1	Session ID
+```
+session-id = bstr .size 16
+```
+- The Server generates the Session ID at creation: 16 bytes from a cryptographically secure random number generator. A Client never chooses it.
+- IDs are unique per Server and never reused (§3.4). Random IDs keep this true across Server restarts without persistent state, so a Client holding an old ID cannot reach a new Session that got the same number; they also do not reveal how many Sessions exist.
+- Text form: 32 lowercase hexadecimal digits, e.g. `3f2a9c0e5b7d41e6a8c2f09d1e4b7a53`. A Client MAY accept a unique prefix from the user and resolve it through the Session list (PD004); on the wire the full ID is always sent.
+
+## 15.2	Ownership
+- A Session is owned by the Account of the Authentication Context that created it. The owner is fixed at creation and never changes.
+- Every Connection authenticated for the owner Account, with any key authorized for it, may see and attach to the Session (attach rules: PD003). Processes of one Account can reach each other's terminals at the operating-system level anyway, so a split by key inside the protocol would not be a security boundary. Restrictions within an Account: Tier PI.
+- The Session ID is not a secret and grants no access: access is decided by the Account only. The ID may be displayed, logged and passed into the Session (§15.4).
+- A Session of another Account is not accessible through the protocol, whatever the privileges of the Account on the Server.
+- The Server MUST handle the ID of a Session of another Account exactly as an unknown ID: SESSION_NOT_FOUND in both cases, so the existence of other Accounts' Sessions is not revealed. The Server SHOULD make the response time independent of the reason.
+- The Server keeps the User Identity that created a Session as metadata (Session list PD004, audit Tier PH); it is not used for authorization.
+
+## 15.3	Session name
+- Names are for users; the protocol addresses Sessions by ID only. A Client resolves a name to an ID through the Session list (PD004).
+- A Client MAY give a name when it creates a Session (key 5 of terminal-open, §14.6). In this version a name is set only at creation; a Session without a name has none.
+- Name: 1–64 bytes matching `[A-Za-z0-9][A-Za-z0-9._-]*`, compared byte by byte.
+- A name is unique among the owner Account's Sessions that are not Terminated. A taken name rejects the Channel with SESSION_NAME_IN_USE; a malformed one with CHANNEL_REJECTED (§14.6).
+
+## 15.4	Session ID inside the Session
+- The Server SHOULD set the environment variable `STPT_SESSION` to the text form of the Session ID (§15.1) for the primary process of the Session, for `stpt` commands run inside it.
+- The variable grants no rights (§15.2). It is never taken from the environment field of terminal-open (§14.6).
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -705,6 +736,8 @@ Collected from all sections; consolidated in Tier PJ.
 - A small resize causes a large redraw; coalescing and Server rate limiting bound this amplification (§14.8).
 - Explicit signals carry the Account's permissions, never those of the Server process, so they cannot reach processes the user could not signal locally (e.g. root processes started with `sudo`) (§14.9).
 - A bounded grace period after the primary process exits keeps background processes from holding a Channel open indefinitely (§14.10).
+- Random Session IDs are never reused, even across Server restarts, so input cannot go to a different Session that got the same ID (§15.1).
+- A Session ID grants no access; an ID of another Account's Session is answered exactly as an unknown one, so Sessions of other Accounts cannot be probed (§15.2).
 
 # Document history
 - draft-00 (2026-10-11): conventions, terminology, concept model, state model, responsibility boundaries, versioning.
@@ -723,3 +756,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-13 (2026-10-13): terminal resize (§14.8).
 - draft-14 (2026-10-13): signals (§14.9).
 - draft-15 (2026-10-13): exit status and Channel close (§14.10).
+- draft-16 (2026-10-13): Session ID, ownership, Session name (§15); error codes SESSION_NOT_FOUND, SESSION_NAME_IN_USE (§13.2).

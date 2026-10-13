@@ -27,7 +27,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PC006  exit status and channel close ✅ 2026-10-13
 
 # 4	Tier PD — Session Model
-- [ ] PD001  Session ID and ownership
+- [x] PD001  Session ID and ownership ✅ 2026-10-13
 - [ ] PD002  Session lifecycle: create, detach, terminate
 - [ ] PD003  attach authorization, concurrent attachments
 - [ ] PD004  session list
