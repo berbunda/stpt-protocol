@@ -730,7 +730,7 @@ session-id = bstr .size 16
 
 ## 15.2	Ownership
 - A Session is owned by the Account of the Authentication Context that created it. The owner is fixed at creation and never changes.
-- Every Connection authenticated for the owner Account, with any key authorized for it, may see and attach to the Session (attach rules: PD003). Processes of one Account can reach each other's terminals at the operating-system level anyway, so a split by key inside the protocol would not be a security boundary. Restrictions within an Account: Tier PI.
+- Every Connection authenticated for the owner Account, with any key authorized for it, may see and attach to the Session (attach rules: §15.9). Processes of one Account can reach each other's terminals at the operating-system level anyway, so a split by key inside the protocol would not be a security boundary. Restrictions within an Account: Tier PI.
 - The Session ID is not a secret and grants no access: access is decided by the Account only. The ID may be displayed, logged and passed into the Session (§15.4).
 - A Session of another Account is not accessible through the protocol, whatever the privileges of the Account on the Server.
 - The Server MUST handle the ID of a Session of another Account exactly as an unknown ID: SESSION_NOT_FOUND in both cases, so the existence of other Accounts' Sessions is not revealed. The Server SHOULD make the response time independent of the reason.
@@ -749,7 +749,7 @@ session-id = bstr .size 16
 ## 15.5	Creation and detach
 - A Session is created by opening a terminal Channel without a Session ID (§14.3); there is no separate create request. It is Running once its primary process has started. If the start fails, the Channel is rejected and the Session is Terminated before its ID was ever sent.
 - A Session that runs without an Attachment from the start is Client behaviour: the Client opens the Channel and ends it with FIN after TERMINAL_ATTACHED.
-- Detach is the Client FIN on the terminal Channel (§14.10); a closed Connection detaches as well. Other forms of detach: PD003.
+- Detach is the Client FIN on the terminal Channel (§14.10); a closed Connection detaches as well. Other forms of detach: §15.9.
 - While a Session has no Attachment, the Server MUST keep reading its output, so its processes never block on a full PTY or pipe. Output is discarded except what is kept for a later Attachment (PD005).
 
 ## 15.6	Termination
