@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-16 (2026-10-13). Changes: see Document history.
+Specification version: draft-17 (2026-10-13). Changes: see Document history.
 
 # 0	Conventions
 
@@ -407,7 +407,8 @@ auth-signed-data = [
 - Authentication succeeds only if the signature is valid and the public key is authorized for the named Account. How keys are authorized for Accounts is a Server matter (e.g. a per-Account list of keys).
 - On success the Server creates the Authentication Context (§1), the Connection becomes Authenticated, and stream limits are raised (§8.2).
 - On an Authenticated Connection a further AUTH_REQUEST is a protocol violation: the Account of a Connection never changes.
-- Failure is uniform: AUTH_RESULT carries no reason, and the Server MUST NOT reveal whether the Account exists. The Server SHOULD make the response time independent of the reason.
+- Failure is uniform: AUTH_RESULT carries no reason, and the Server MUST NOT reveal whether the Account exists.
+- The Server MUST perform every check of AUTH_REQUEST (signature verification with the key from the request, Account lookup, key authorization) whichever of them fails, and decide once after all of them. The signature is verified even if the Account does not exist. The work, and so the response time, does not depend on the reason of a failure.
 - The Server limits failed attempts per Connection and closes the Connection with AUTH_FAILED when the limit is reached (§13.4).
 
 # 13	Errors, timeouts and resource limits
@@ -418,6 +419,7 @@ Errors use QUIC mechanisms; there is no error message:
 - Stream error: RESET_STREAM and STOP_SENDING with an error code; the Connection stays open.
 - Errors of individual requests (e.g. Session operations) are reported by the responses those requests define.
 - Before the Connection is Authenticated, the reason phrase of CONNECTION_CLOSE MUST be empty. Afterwards it MAY contain a short diagnostic text and MUST NOT contain secrets.
+- The Server SHOULD record the exact reason of every rejection (Connection, authentication, Channel, request) in its local log. The peer receives only the error code; the administrator diagnoses from the log.
 
 ## 13.2	Error codes
 | Code | Name | Scope | Meaning |
@@ -723,9 +725,9 @@ Collected from all sections; consolidated in Tier PJ.
 - No implementation name or version is sent, so a scanner cannot select targets by software version (§10.3).
 - Messages of unknown types close the Connection; new behaviour is possible only through negotiated capabilities (§11.4).
 - User authentication is bound to the Connection by the TLS exporter, so a signature cannot be replayed or relayed (§12.3).
-- No key probing and uniform failures prevent enumeration of Accounts and authorized keys (§12.2, §12.4).
+- No key probing, uniform failures and checks completed regardless of the failing one prevent enumeration of Accounts and authorized keys, also by timing (§12.2, §12.4).
 - No passwords: nothing a phishing or compromised Server could capture and reuse (§12.1).
-- Before authentication errors carry no reason text (§13.1).
+- Before authentication errors carry no reason text; exact reasons stay in the Server log (§13.1).
 - Deadlines, limits and QUIC Retry bound the resources an unauthenticated peer can consume (§13.3–§13.5).
 - Only the Client opens terminal Channels; the Server cannot start an interactive context on the Client (§14.3).
 - Every terminal Channel is an authorized Attachment; Session termination is a separate explicit request (§14.3).
@@ -757,3 +759,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-14 (2026-10-13): signals (§14.9).
 - draft-15 (2026-10-13): exit status and Channel close (§14.10).
 - draft-16 (2026-10-13): Session ID, ownership, Session name (§15); error codes SESSION_NOT_FOUND, SESSION_NAME_IN_USE (§13.2).
+- draft-17 (2026-10-13): authentication checks completed before one decision (§12.4); rejection reasons in the Server log (§13.1).
