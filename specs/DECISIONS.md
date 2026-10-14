@@ -24,6 +24,7 @@ Do not create differences for the sake of differences.
 - Primary platforms: Windows 11 x86-64 and Debian-based Linux x86-64.
 - One source project; each platform build is a single binary acting as client and server, mode selected via CLI. Builds are platform-specific.
 - Interactive terminal: PTY on Linux; ConPTY for a future Windows server mode.
+- ✅ 2026-10-14 The command line is the same on every platform; Windows builds keep the `server` subcommand and refuse it with an error (gate G2) until RK006, instead of hiding it (RA003).
 
 # 4	Architectural model
 - Endpoint, Client, Server, Connection, Channel, Stream, Identity, Account, Authentication Context, Session, Attachment and Retention Policy are distinct concepts (see PROTOCOL.md §1, §2).
