@@ -24,7 +24,7 @@ Do not create differences for the sake of differences.
 - Primary platforms: Windows 11 x86-64 and Debian-based Linux x86-64.
 - One source project; each platform build is a single binary acting as client and server, mode selected via CLI. Builds are platform-specific.
 - Interactive terminal: PTY on Linux; ConPTY for a future Windows server mode.
-- ✅ 2026-10-14 The command line is the same on every platform; Windows builds keep the `server` subcommand and refuse it with an error (gate G2) until RK006, instead of hiding it (RA003).
+- ✅ 2026-10-14 The command line is the same on every platform; Windows builds keep the `server` subcommand and refuse it with an error (gate G2) until RC008, instead of hiding it (RA003).
 
 # 4	Architectural model
 - Endpoint, Client, Server, Connection, Channel, Stream, Identity, Account, Authentication Context, Session, Attachment and Retention Policy are distinct concepts (see PROTOCOL.md §1, §2).
@@ -127,6 +127,7 @@ Keystroke recording is not a reliable log of executed shell commands; secret han
 - ✅ 2026-10-11 Requirements language BCP 14 (RFC 2119, RFC 8174); security requirements only as MUST / MUST NOT; OPTIONAL features never lower security; peer input untrusted, violations fail closed (PROTOCOL.md §0).
 - ✅ 2026-10-11 Wire protocol version is a single integer; optional features via capabilities; draft versions disjoint from final; no fallback to a lower version; deprecated versions are never offered (PROTOCOL.md §5).
 - ✅ 2026-10-11 The ALPN token is `stpt` without a version; the version is negotiated inside TLS (PROTOCOL.md §6.3).
+- ✅ 2026-10-17 RK006 (Windows Server mode) cancelled: Windows 11 is a primary platform and the binary provides both roles there (RULES.md §1.3), so Windows Server mode moves into the Terminal MVP as RC008, next to the Linux PTY; installation as a Windows service stays in packaging as RK007.
 - ✅ 2026-10-14 RA006 (local client ↔ server prototype) cancelled: Tier RA precedes QUIC and TLS, so it cannot show a real link, and a link without TLS would violate RULES.md §1.8. If a prototype item is needed later, it is added to Tier RB or a later Tier, never to RA.
 - ✅ 2026-10-13 Tiers PE–PK and RE–RK filled with items; each roadmap has a backlog for items taken up only on request.
 - ✅ 2026-10-11 The roadmap is split into two tracks: protocol (P, docs/ROADMAP.md) and realisation (R, stpt/docs/ROADMAP.md). R items depend on P items explicitly; the protocol is specified ahead of the implementation.
