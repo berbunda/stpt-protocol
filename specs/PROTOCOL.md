@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-23 (2026-10-17). Changes: see Document history.
+Specification version: draft-24 (2026-10-17). Changes: see Document history.
 
 # 0	Conventions
 
@@ -452,7 +452,10 @@ Errors use QUIC mechanisms; there is no error message:
 - Connection error: CONNECTION_CLOSE (application variant) with an error code (§13.2). A regular close uses NO_ERROR.
 - Stream error: RESET_STREAM and STOP_SENDING with an error code; the Connection stays open.
 - Errors of individual requests (e.g. Session termination) are reported in REQUEST_RESULT (§8.4).
-- Before the Connection is Authenticated, the reason phrase of CONNECTION_CLOSE MUST be empty. Afterwards it MAY contain a short diagnostic text and MUST NOT contain secrets.
+- Reason phrase of CONNECTION_CLOSE:
+  - A close initiated by the STPT implementation (every application close, and a transport close it chooses itself) MUST have an empty reason phrase before the Connection is Authenticated. Afterwards the reason phrase MAY contain a short diagnostic text and MUST NOT contain secrets.
+  - Diagnostic text that the QUIC or TLS implementation adds on its own to a transport close (e.g. after a failed TLS handshake) is outside this rule. An implementation SHOULD suppress it before authentication where its QUIC or TLS implementation allows.
+  - The reason phrase is for diagnostics only: a receiver MUST NOT derive behaviour from it.
 - The Server SHOULD record the exact reason of every rejection (Connection, authentication, Channel, request) in its local log. The peer receives only the error code; the administrator diagnoses from the log.
 
 ## 13.2	Error codes
@@ -946,6 +949,7 @@ Collected from all sections; consolidated in Tier PJ.
 - No key probing, uniform failures and checks completed regardless of the failing one prevent enumeration of Accounts and authorized keys, also by timing (§12.2, §12.4).
 - No passwords: nothing a phishing or compromised Server could capture and reuse (§12.1).
 - Before authentication errors carry no reason text; exact reasons stay in the Server log (§13.1).
+- A QUIC or TLS implementation may add its own text to a transport close after a failed handshake; the text can identify the implementation, against the intent of §10.3. It is suppressed where the implementation allows; a receiver never acts on it (§13.1).
 - Deadlines, limits and QUIC Retry bound the resources an unauthenticated peer can consume (§13.3–§13.5).
 - Only the Client opens terminal Channels; the Server cannot start an interactive context on the Client (§14.3).
 - Every terminal Channel is an authorized Attachment; Session termination is a separate explicit request (§14.3).
@@ -993,3 +997,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-21 (2026-10-13): Session list with Attachments, paging (§15.10); message type SESSION_LIST.
 - draft-22 (2026-10-13): output buffer, output offsets, replay and resume, redraw on attach (§15.11); connection migration required, reattach after Connection loss (§6.1, §15.12).
 - draft-23 (2026-10-17): key exchange group order of the Client, Server handling of a Client preferring X25519 (§6.2).
+- draft-24 (2026-10-17): reason phrase rule limited to closes initiated by the STPT implementation; text added by the QUIC or TLS implementation, diagnostics only (§13.1).
