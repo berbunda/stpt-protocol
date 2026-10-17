@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-25 (2026-10-17). Changes: see Document history.
+Specification version: draft-26 (2026-10-17). Changes: see Document history.
 
 # 0	Conventions
 
@@ -481,6 +481,7 @@ Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above ar
 |---|---|---|
 | CLIENT_HELLO received by the Server after the handshake | 10 s | Server closes with TIMEOUT |
 | SERVER_HELLO received by the Client after it sent CLIENT_HELLO | 10 s | Client closes with TIMEOUT |
+| AUTH_RESULT received by the Client after it sent AUTH_REQUEST | 10 s | Client closes with TIMEOUT |
 | Connection Authenticated after it becomes Established | 60 s | Server closes with TIMEOUT |
 | QUIC idle timeout (`max_idle_timeout`) | 60 s | Connection closed silently (RFC 9000 §10.1) |
 | progress of a stalled terminal stream | 10 s | Server ends the Attachment with TIMEOUT (§15.9) |
@@ -1000,3 +1001,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-23 (2026-10-17): key exchange group order of the Client, Server handling of a Client preferring X25519 (§6.2).
 - draft-24 (2026-10-17): reason phrase rule limited to closes initiated by the STPT implementation; text added by the QUIC or TLS implementation, diagnostics only (§13.1).
 - draft-25 (2026-10-17): GREASE values are exactly 16 per kind, with one repeated digit (§11.5); Client deadline for SERVER_HELLO (§13.3).
+- draft-26 (2026-10-17): Client deadline for AUTH_RESULT (§13.3).
