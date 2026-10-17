@@ -51,6 +51,7 @@ Do not create differences for the sake of differences.
 
 # 5	Transport and connection establishment
 - ✅ 2026-10-10 QUIC over UDP with TLS 1.3. Candidate Rust library: `quinn` (with `rustls`).
+- ✅ 2026-10-17 Implementation (RB001, RB002, `stpt` ARCHITECTURE §6): `quinn` with `rustls` and the `aws-lc-rs` provider (the `ring` provider has no X25519MLKEM768). `rustls` selects the first group in the Client's order, so the Server cannot force the hybrid group; a Client preferring X25519 while offering X25519MLKEM768 is rejected instead, and PROTOCOL.md §6.2 now requires the Client order (draft-23). `stpt` uses no TLS session resumption: a Client process makes one Connection, and a resumed handshake carries no Server signature.
 - Order: QUIC/TLS handshake and server identity verification → STPT HELLO → version and capability negotiation → user authentication → Session create/attach.
 - ✅ 2026-10-11 HELLO: one round trip CLIENT_HELLO → SERVER_HELLO on the control stream; the Server is silent until CLIENT_HELLO; HELLO is unsigned (protected by TLS); no implementation name or version anywhere in the protocol, unlike the SSH banner (PROTOCOL.md §10).
 - No STPT banner or any application data is sent before the cryptographic channel is established.

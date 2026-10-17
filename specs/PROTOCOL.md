@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-22 (2026-10-13). Changes: see Document history.
+Specification version: draft-23 (2026-10-17). Changes: see Document history.
 
 # 0	Conventions
 
@@ -120,6 +120,8 @@ Each Connection is one QUIC connection secured by TLS 1.3.
 ## 6.2	TLS 1.3
 - Cipher suites: Endpoints MUST support TLS_AES_128_GCM_SHA256 and TLS_CHACHA20_POLY1305_SHA256 and SHOULD support TLS_AES_256_GCM_SHA384. Other cipher suites MUST NOT be negotiated.
 - Key exchange: Endpoints MUST support X25519 and SHOULD support the hybrid group X25519MLKEM768. If both Endpoints support X25519MLKEM768, it MUST be selected. Other groups MUST NOT be negotiated.
+  - A Client that supports X25519MLKEM768 MUST list it before X25519 in `supported_groups` and SHOULD send a key share for it.
+  - A Server MUST NOT select X25519 if the Client offers X25519MLKEM768. If the Client lists X25519 first, the Server selects X25519MLKEM768 (with HelloRetryRequest if needed) or aborts the handshake.
 - Server authentication: the Server MUST authenticate in the TLS handshake with the key of its Server Identity. The Client MUST abort the handshake if verification fails. Credential form and verification: §9.
 - Client certificates are not used: the Server MUST NOT request one, and the Client MUST NOT send one. User authentication takes place after the handshake and is bound to the Connection by the TLS exporter (§12).
 - Session resumption MAY be used, only with the `psk_dhe_ke` mode. Resumption MUST NOT restore an Authentication Context: user authentication is performed on every Connection.
@@ -990,3 +992,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-20 (2026-10-13): attach authorization, Attachment ID, several Attachments, attach modes shared and takeover, read-only, terminal size, stalled Attachments, detach request (§15.9); message type SESSION_DETACH; error code ATTACHMENT_NOT_FOUND.
 - draft-21 (2026-10-13): Session list with Attachments, paging (§15.10); message type SESSION_LIST.
 - draft-22 (2026-10-13): output buffer, output offsets, replay and resume, redraw on attach (§15.11); connection migration required, reattach after Connection loss (§6.1, §15.12).
+- draft-23 (2026-10-17): key exchange group order of the Client, Server handling of a Client preferring X25519 (§6.2).
