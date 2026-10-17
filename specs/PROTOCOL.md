@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-26 (2026-10-17). Changes: see Document history.
+Specification version: draft-27 (2026-10-17). Changes: see Document history.
 
 # 0	Conventions
 
@@ -215,6 +215,7 @@ channel-open = [
 ```
 - The receiver checks the kind and the Authentication Context. To reject, it resets the stream and sends STOP_SENDING with CHANNEL_REJECTED (§13.2); the Connection stays open.
 - After acceptance the stream carries messages of that channel kind only. Further streams of the same Channel, if any, are defined by its kind.
+- A stream whose first message is not CHANNEL_OPEN, or that ends (FIN) before CHANNEL_OPEN, is a protocol violation. A stream the opener resets before CHANNEL_OPEN is abandoned and ignored.
 
 ## 8.4	Requests
 Operations that are not Channels (e.g. Session termination, §15.6) are requests on the control Channel:
@@ -1002,3 +1003,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-24 (2026-10-17): reason phrase rule limited to closes initiated by the STPT implementation; text added by the QUIC or TLS implementation, diagnostics only (§13.1).
 - draft-25 (2026-10-17): GREASE values are exactly 16 per kind, with one repeated digit (§11.5); Client deadline for SERVER_HELLO (§13.3).
 - draft-26 (2026-10-17): Client deadline for AUTH_RESULT (§13.3).
+- draft-27 (2026-10-17): streams that end or are reset before CHANNEL_OPEN (§8.3).
