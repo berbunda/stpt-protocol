@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-27 (2026-10-17). Changes: see Document history.
+Specification version: draft-28 (2026-10-18). Changes: see Document history.
 
 # 0	Conventions
 
@@ -587,7 +587,8 @@ command = tstr / [+ tstr]
 ```
 Mode and command:
 - PTY and command are independent: a login shell or a command, each with or without a PTY.
-- A text string is run by the Account's shell (`-c` on Unix-like systems). An array is an argument vector run directly, without a shell. A Client SHOULD use the array form when the arguments come from data rather than from a user typing a command line.
+- A text string is a command line, run by the Account's shell (`-c` on Unix-like systems). An array is an argument vector: its elements reach the program unchanged, without splitting or expansion. A Client SHOULD use the array form when the arguments come from data rather than from a user typing a command line.
+- Both forms run through the Account's shell, so a disabled or restricted shell (e.g. `nologin`, `git-shell`) also governs commands. On Unix-like systems the Server quotes each element of the array for a POSIX shell (in single quotes, a `'` as `'\''`), joins them with spaces and runs the result with `-c`.
 - The command MUST NOT be empty and MUST NOT contain NUL. On a Server whose platform takes a single command line, the Server builds it from the array by that platform's quoting rules.
 
 PTY:
@@ -957,7 +958,7 @@ Collected from all sections; consolidated in Tier PJ.
 - Only the Client opens terminal Channels; the Server cannot start an interactive context on the Client (§14.3).
 - Every terminal Channel is an authorized Attachment; Session termination is a separate explicit request (§14.3).
 - Environment variables pass only through a Server allowlist, closing attacks such as `LD_PRELOAD`, `BASH_ENV` or Shellshock (CVE-2014-6271); the Client does not leak its environment (§14.6).
-- The argument-vector command form avoids shell quoting injection; the terminal type is restricted to a safe character set (§14.6).
+- The argument-vector command form avoids shell quoting injection; both forms run through the Account's shell, so a disabled shell (`nologin`) also refuses commands; the terminal type is restricted to a safe character set (§14.6).
 - Terminal output reaches the Client's terminal emulator unfiltered; hostile escape sequences (e.g. clipboard writes by OSC 52, title or status reports injected back as input) are a risk of the emulator. Client-side protection is an open question (DECISIONS.md §7) (§14.7).
 - Output is never buffered without bound: QUIC flow control stops reading at the source (§14.7).
 - A small resize causes a large redraw; coalescing and Server rate limiting bound this amplification (§14.8).
@@ -1004,3 +1005,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-25 (2026-10-17): GREASE values are exactly 16 per kind, with one repeated digit (§11.5); Client deadline for SERVER_HELLO (§13.3).
 - draft-26 (2026-10-17): Client deadline for AUTH_RESULT (§13.3).
 - draft-27 (2026-10-17): streams that end or are reset before CHANNEL_OPEN (§8.3).
+- draft-28 (2026-10-18): the argument vector also runs through the Account's shell, quoted (§14.6).
