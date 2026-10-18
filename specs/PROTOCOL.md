@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-30 (2026-10-18). Changes: see Document history.
+Specification version: draft-31 (2026-10-18). Changes: see Document history.
 
 # 0	Conventions
 
@@ -920,7 +920,7 @@ Output buffer:
 Replay on attach:
 - After TERMINAL_ATTACHED the Server first sends replay from the buffer, then live output, without a gap or overlap between them. Key 2 of TERMINAL_ATTACHED is the offset of the first byte that follows. Replay uses TERMINAL_DATA and TERMINAL_STDERR as the original output did.
 - Resume (key 9 of terminal-open present): replay starts at the given offset if the buffer still holds it, otherwise at the start of the buffer; the Client learns the lost amount from key 2 and SHOULD tell the user. An offset beyond the current end of output rejects the Channel with CHANNEL_REJECTED.
-- Fresh attach (key 9 absent): replay is the tail of the buffer, at most the fresh replay limit (RECOMMENDED 16 KiB, configurable), starting after the first line feed in that tail, so it does not start inside an escape sequence; without a line feed in the tail nothing is replayed. A tail that starts at offset 0 is the whole output from its start and is replayed whole.
+- Fresh attach (key 9 absent): replay is the tail of the buffer, at most the fresh replay limit (RECOMMENDED 16 KiB, configurable), starting after the first line feed in that tail, so it does not start inside an escape sequence; without a line feed in the tail nothing is replayed. With a PTY, if the current screen began within the tail (the last switch of the alternate screen, see Terminal modes; offset 0 if there was none), the replay starts exactly there instead: the output before belongs to another screen, and the start of a screen is not inside an escape sequence.
 - Redraw: on a fresh attach, and on a resume that lost output, the Server sends SIGWINCH to the foreground process group of the PTY even if the size has not changed, so full-screen programs redraw the screen. Not on a resume without loss, which continues the screen as it was. As many programs redraw completely only on a real size change, the Server MAY instead change the PTY size by one row for a moment and restore it; each change delivers SIGWINCH.
 - Exited Session: the same replay, then TERMINAL_EXIT (§14.10).
 - The Server does not interpret output: it keeps no screen state and runs no terminal emulator; the only exception are the terminal modes below.
@@ -1014,3 +1014,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-28 (2026-10-18): the argument vector also runs through the Account's shell, quoted (§14.6).
 - draft-29 (2026-10-18): a fresh replay that starts at offset 0 is replayed whole (§15.11).
 - draft-30 (2026-10-18): terminal modes followed by the Server and sent on attach (§14.3, §15.11); redraw by a brief size change.
+- draft-31 (2026-10-18): a fresh replay starts with the current screen (§15.11); replaces the offset 0 rule of draft-29.
