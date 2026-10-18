@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-29 (2026-10-18). Changes: see Document history.
+Specification version: draft-30 (2026-10-18). Changes: see Document history.
 
 # 0	Conventions
 
@@ -543,6 +543,7 @@ terminal-attached = [
     0 => session-id,            ; the attached Session (§15.1)
     1 => attachment-id,         ; this Attachment (§15.9)
     2 => uint,                  ; output offset of the first output byte that follows (§15.11)
+    ? 3 => bstr,                ; terminal modes to set before the replay (§15.11)
     * int => any,
   },
 ]
@@ -920,9 +921,14 @@ Replay on attach:
 - After TERMINAL_ATTACHED the Server first sends replay from the buffer, then live output, without a gap or overlap between them. Key 2 of TERMINAL_ATTACHED is the offset of the first byte that follows. Replay uses TERMINAL_DATA and TERMINAL_STDERR as the original output did.
 - Resume (key 9 of terminal-open present): replay starts at the given offset if the buffer still holds it, otherwise at the start of the buffer; the Client learns the lost amount from key 2 and SHOULD tell the user. An offset beyond the current end of output rejects the Channel with CHANNEL_REJECTED.
 - Fresh attach (key 9 absent): replay is the tail of the buffer, at most the fresh replay limit (RECOMMENDED 16 KiB, configurable), starting after the first line feed in that tail, so it does not start inside an escape sequence; without a line feed in the tail nothing is replayed. A tail that starts at offset 0 is the whole output from its start and is replayed whole.
-- Redraw: on a fresh attach, and on a resume that lost output, the Server sends SIGWINCH to the foreground process group of the PTY even if the size has not changed, so full-screen programs redraw the screen. Not on a resume without loss, which continues the screen as it was.
+- Redraw: on a fresh attach, and on a resume that lost output, the Server sends SIGWINCH to the foreground process group of the PTY even if the size has not changed, so full-screen programs redraw the screen. Not on a resume without loss, which continues the screen as it was. As many programs redraw completely only on a real size change, the Server MAY instead change the PTY size by one row for a moment and restore it; each change delivers SIGWINCH.
 - Exited Session: the same replay, then TERMINAL_EXIT (§14.10).
-- The Server does not interpret output: it keeps no screen state and runs no terminal emulator.
+- The Server does not interpret output: it keeps no screen state and runs no terminal emulator; the only exception are the terminal modes below.
+
+Terminal modes:
+- With a PTY, the Server follows in the output the switches of a fixed set of terminal modes, which full-screen programs set once at their start and a new Client's terminal would otherwise lack: DEC private modes switched with `CSI ? Pm h` and `CSI ? Pm l` — cursor keys (1), mouse reporting (9, 1000, 1002, 1003, 1005, 1006, 1015), cursor visibility (25), alternate screen (47, 1047, 1049), focus events (1004), bracketed paste (2004) — and the keypad mode (`ESC =`, `ESC >`). Other sequences are not followed.
+- On attach the Server puts into key 3 of TERMINAL_ATTACHED the sequence that sets every followed mode that is not at its default (alternate screen last); key 3 is absent if all are at their default. The Client writes it to its terminal before the replay. It is not output: it has no output offset.
+- A Client SHOULD follow the same modes in the output and return them to their defaults when its Attachment ends without TERMINAL_EXIT (detach, lost Connection), so its terminal is usable again.
 
 ## 15.12	Connection migration and reattach
 - A network change of the Client (e.g. Wi-Fi to mobile) is QUIC connection migration (RFC 9000 §9): the Connection and its Attachments continue; nothing happens at the STPT level (§6.1). This holds while the outage is shorter than the idle timeout (§13.3).
@@ -1007,3 +1013,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-27 (2026-10-17): streams that end or are reset before CHANNEL_OPEN (§8.3).
 - draft-28 (2026-10-18): the argument vector also runs through the Account's shell, quoted (§14.6).
 - draft-29 (2026-10-18): a fresh replay that starts at offset 0 is replayed whole (§15.11).
+- draft-30 (2026-10-18): terminal modes followed by the Server and sent on attach (§14.3, §15.11); redraw by a brief size change.
