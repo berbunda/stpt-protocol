@@ -927,14 +927,15 @@ Replay on attach:
 
 Terminal modes:
 - With a PTY, the Server follows in the output the switches of a fixed set of terminal modes, which full-screen programs set once at their start and a new Client's terminal would otherwise lack: DEC private modes switched with `CSI ? Pm h` and `CSI ? Pm l` — cursor keys (1), mouse reporting (9, 1000, 1002, 1003, 1005, 1006, 1015), cursor visibility (25), alternate screen (47, 1047, 1049), focus events (1004), bracketed paste (2004) — and the keypad mode (`ESC =`, `ESC >`). Other sequences are not followed.
-- On attach the Server puts into key 3 of TERMINAL_ATTACHED the sequence that sets every followed mode that is not at its default (alternate screen last); key 3 is absent if all are at their default. The Client writes it to its terminal before the replay. It is not output: it has no output offset.
+- On attach the Server puts into key 3 of TERMINAL_ATTACHED the sequence that sets every followed mode that is not at its default (alternate screen last); key 3 is absent if all are at their default. The Client writes it to its terminal before the replay, except on a resume without loss: that terminal already has the modes of the offset it resumes from, and the replay carries the switches since. It is not output: it has no output offset.
 - A Client SHOULD follow the same modes in the output and return them to their defaults when its Attachment ends without TERMINAL_EXIT (detach, lost Connection), so its terminal is usable again.
 
 ## 15.12	Connection migration and reattach
 - A network change of the Client (e.g. Wi-Fi to mobile) is QUIC connection migration (RFC 9000 §9): the Connection and its Attachments continue; nothing happens at the STPT level (§6.1). This holds while the outage is shorter than the idle timeout (§13.3).
 - After the loss of a Connection the Client opens a new Connection, authenticates fully (§12; resumption never restores authentication, §6.2) and attaches to the Session with resume (§15.11). There is no resume token that would grant access without the user key.
 - The old Attachment stays until the Server notices the loss (idle timeout or stall limit, §13.3). The Client MAY end it at once with SESSION_DETACH and its old Attachment ID (§15.9). It SHOULD NOT use the takeover mode for this, which would also end the Attachments of other devices.
-- When to reattach automatically, how often to retry and how to show it to the user is Client behaviour.
+- When to reattach automatically, how often to retry and how to show it to the user is Client behaviour. A failed verification of the Server key (§9.3) MUST NOT be retried or bypassed, and a Client MUST NOT ask the user to trust a new key while reattaching.
+- Terminal input has no offsets: what was sent on the lost Connection may be lost. A Client SHOULD NOT reattach automatically when losing input would go unnoticed, such as standard input from a pipe, and SHOULD NOT send input typed during the outage later.
 
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
@@ -1015,3 +1016,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-29 (2026-10-18): a fresh replay that starts at offset 0 is replayed whole (§15.11).
 - draft-30 (2026-10-18): terminal modes followed by the Server and sent on attach (§14.3, §15.11); redraw by a brief size change.
 - draft-31 (2026-10-18): a fresh replay starts with the current screen (§15.11); replaces the offset 0 rule of draft-29.
+- draft-32 (2026-11-03): Client side of resume: terminal modes on a resume without loss (§15.11); key checks and input during automatic reattach (§15.12).
