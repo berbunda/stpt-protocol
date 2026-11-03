@@ -932,6 +932,7 @@ Terminal modes:
 
 ## 15.12	Connection migration and reattach
 - A network change of the Client (e.g. Wi-Fi to mobile) is QUIC connection migration (RFC 9000 §9): the Connection and its Attachments continue; nothing happens at the STPT level (§6.1). This holds while the outage is shorter than the idle timeout (§13.3).
+- A Client SHOULD notice a change of its address and migrate at once with a new connection ID (RFC 9000 §9.5): until a packet from the new address arrives, the Server keeps sending to the old one, and an idle Client may stay silent until its next keep-alive.
 - After the loss of a Connection the Client opens a new Connection, authenticates fully (§12; resumption never restores authentication, §6.2) and attaches to the Session with resume (§15.11). There is no resume token that would grant access without the user key.
 - The old Attachment stays until the Server notices the loss (idle timeout or stall limit, §13.3). The Client MAY end it at once with SESSION_DETACH and its old Attachment ID (§15.9). It SHOULD NOT use the takeover mode for this, which would also end the Attachments of other devices.
 - When to reattach automatically, how often to retry and how to show it to the user is Client behaviour. A failed verification of the Server key (§9.3) MUST NOT be retried or bypassed, and a Client MUST NOT ask the user to trust a new key while reattaching.
@@ -1017,3 +1018,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-30 (2026-10-18): terminal modes followed by the Server and sent on attach (§14.3, §15.11); redraw by a brief size change.
 - draft-31 (2026-10-18): a fresh replay starts with the current screen (§15.11); replaces the offset 0 rule of draft-29.
 - draft-32 (2026-11-03): Client side of resume: terminal modes on a resume without loss (§15.11); key checks and input during automatic reattach (§15.12).
+- draft-33 (2026-11-03): a Client notices a change of its address and migrates at once (§15.12).
