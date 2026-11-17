@@ -177,3 +177,10 @@ Next experiment:
 # 12	Working principle
 First define the state model and responsibility boundaries, then the wire format, only then the implementation.
 Start with a narrow MVP verifiable on a local VM.
+
+# 13	File transfer Channel (PE001)
+- ✅ 2026-11-08 User decision: Channel lifetime is bound to the Connection, independent of terminal Sessions; file transfer needs no terminal. After loss, full login and a new Channel; resume semantics belong to PE004.
+- ✅ 2026-11-08 User decision: one bidirectional stream per Channel, sequential operations within it, several Channels for parallelism. The user requested a single default stream and optional bounded parallelism. Design defaults: Client offers 1 Channel; Server caps the negotiated maximum with its configurable limit (recommended default 8). Additional Channels open as needed, within the shared QUIC stream budget.
+- ✅ 2026-11-08 Protocol design: optional negotiated capability 1 with parameter map (profile version 1, maximum simultaneous Channels); Channel kind 2; acceptance message FILES_READY (0x4000). Negotiation keeps existing terminal-only peers compatible without changing the draft wire version. The Server may narrow the offered maximum; it cannot increase it.
+- ✅ 2026-11-08 Protocol design: Client opens the Channel, Server authorizes it for the authenticated Account; no Client filesystem access is granted. Stream interruption is not a success acknowledgement and implies no automatic rollback or safe retry. Operation, partial-file and resume details are deferred to PE002–PE005.
+- PE001 specifies the Channel envelope in PROTOCOL.md §16. The file-transfer profile remains incomplete until subsequent PE items define file operations. No implementation is claimed; the program roadmap RE001 stays open.

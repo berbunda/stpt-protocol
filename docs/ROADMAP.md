@@ -34,7 +34,7 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PD005  reattach after Connection loss vs connection migration ✅ 2026-10-13
 
 # 5	Tier PE — File Transfer
-- [ ] PE001  file transfer Channel ➕ 2026-10-13
+- [x] PE001  file transfer Channel ➕ 2026-10-13 ✅ 2026-11-08
 - [ ] PE002  file operations: transfer and management, with the Account's permissions ➕ 2026-10-13
 - [ ] PE003  data transfer: chunking, integrity, large files ➕ 2026-10-13
 - [ ] PE004  resume of interrupted transfers ➕ 2026-10-13

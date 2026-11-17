@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-31 (2026-10-18). Changes: see Document history.
+Specification version: draft-35 (2026-11-08). Changes: see Document history.
 
 # 0	Conventions
 
@@ -337,6 +337,8 @@ capabilities = { * uint => any }   ; capability id => parameters
 - A capability is in effect for the whole Connection only if the Server selected it.
 - Capability ids: 0 is reserved; 0x00000001–0xEFFFFFFF are assigned by this specification; 0xF0000000 and above are for private and experimental use.
 
+Assigned capabilities: 1 — `file-transfer` (§16.2).
+
 ## 11.3	Message types
 | Range | Use |
 |---|---|
@@ -364,6 +366,8 @@ Assigned core types:
 | 29 | REQUEST_RESULT | §8.4 |
 | 30 | SESSION_DETACH | §15.9 |
 | 31 | SESSION_LIST | §15.10 |
+
+Assigned capability message types: 0x4000 — FILES_READY (capability 1, §16.2).
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -517,6 +521,7 @@ limits = {
 |---|---|---|
 | 0 | reserved | |
 | 1 | terminal | §14 |
+| 2 | files (capability 1) | §16 |
 
 Other kinds are assigned by later sections (file transfer, client file access, port forwarding). Control is not a channel kind: it is stream 0 (§8.1).
 
@@ -938,6 +943,67 @@ Terminal modes:
 - When to reattach automatically, how often to retry and how to show it to the user is Client behaviour. A failed verification of the Server key (§9.3) MUST NOT be retried or bypassed, and a Client MUST NOT ask the user to trust a new key while reattaching.
 - Terminal input has no offsets: what was sent on the lost Connection may be lost. A Client SHOULD NOT reattach automatically when losing input would go unnoticed, such as standard input from a pipe, and SHOULD NOT send input typed during the outage later.
 
+# 16	File transfer Channel
+
+Status: draft Channel envelope (PE001, 2026-11-08). Not implemented in the program. File operation messages remain to be specified by PE002–PE005 before this profile can perform file operations.
+
+## 16.1	Purpose and boundaries
+- A file transfer Channel provides Client-initiated transfer and management of files on the Server, with the permissions of the authenticated Account. Upload and download use the same Channel kind.
+- The Channel belongs to its Connection, independently of any terminal Session or Attachment. Opening it neither creates nor attaches to a Session. No terminal is required.
+- The Server MUST NOT gain access to Client files merely because this Channel exists. The Client chooses local sources and destinations; Server-initiated access to Client files is a separate service (Tier PF).
+- File operations and their results, transfer data and integrity checks, resume, metadata and paths are specified separately by PE002–PE005. This section defines the Channel envelope only; it does not yet define an executable file operation.
+
+## 16.2	Negotiation and opening
+Allocations: capability id 1 (`file-transfer`), Channel kind 2 (`files`), message type 0x4000 (`FILES_READY`). FILES_READY is a capability message, not a core message. This optional extension does not change the current wire version.
+
+The Client offers capability 1 in CLIENT_HELLO with these parameters:
+```
+file-transfer-params = {
+  0 => 1,                       ; profile version
+  1 => uint,                    ; maximum simultaneous file Channels, at least 1
+  * int => any,
+}
+```
+The Client SHOULD offer a maximum of 1 by default and MAY allow a larger configured value. A Server supporting profile 1 MAY select capability 1 with the same profile version and a maximum between 1 and the offered maximum, capped by its configured per-Connection file-Channel limit (RECOMMENDED default: 8). Unsupported or malformed offers are not selected. A Client MUST reject a selection with an unsupported profile, missing required fields, a zero maximum or a maximum above its offer as PROTOCOL_VIOLATION.
+
+The selected maximum is fixed for the Connection. The capability is in effect only after selection (§11.2). Absence of selection leaves terminal and Session services unaffected.
+
+Only the Client opens a file transfer Channel, after authentication and only when this capability is in effect (§8.2, §11.4):
+```
+files-open = [
+  type: CHANNEL_OPEN,
+  body: {
+    0 => 2,                     ; channel kind: files
+    * int => any,
+  },
+]
+
+files-ready = [
+  type: FILES_READY,            ; value 0x4000; capability 1
+  body: { * int => any },
+]
+```
+- Opening carries no path, operation or Session ID. The Server checks the Authentication Context, file-service policy and resource availability. Acceptance grants no permissions beyond that Account's file access and any stricter Server policy.
+- On acceptance the Server's first message is FILES_READY. The Client MUST NOT send further messages on this stream before receiving it. A repeated CHANNEL_OPEN or FILES_READY is a protocol violation.
+- The Client SHOULD bound the wait for FILES_READY (RECOMMENDED 10 s from sending CHANNEL_OPEN); on expiry it resets the stream and sends STOP_SENDING with TIMEOUT. The Connection remains open.
+- Rejection uses RESET_STREAM and STOP_SENDING with CHANNEL_REJECTED, or LIMIT_EXCEEDED for a resource limit (§13); the Connection and other Channels remain open.
+- A Server MUST NOT open this Channel on the Client. Receipt of one, or use of the Channel without the negotiated capability, closes the Connection with PROTOCOL_VIOLATION.
+
+## 16.3	Stream and concurrency
+- Each file transfer Channel uses exactly one client-initiated bidirectional QUIC stream, using the framing, CBOR and peer message-size limits of §7 and §13.4. No raw byte mode or extra data stream is introduced.
+- After FILES_READY the Channel carries only messages defined for this file-transfer profile. The Server MUST perform file operations with the Account's permissions, never with additional privileges of the Server process.
+- At most one operation is outstanding on a Channel. A Client may reuse an idle Channel for subsequent operations; parallel operations use separate Channels, opened as needed up to the selected maximum (§16.2). PE002–PE003 must define when an operation finishes before a successor may begin.
+- The Client MUST NOT exceed the selected maximum, counting Channels from sending CHANNEL_OPEN until both stream directions have ended or been aborted. The Server MUST enforce the maximum and rejects an excess opening with LIMIT_EXCEEDED without affecting other Channels. A lower currently available QUIC stream budget can further restrict parallelism; selection does not reserve streams.
+- File Channels share the Connection's stream budget with terminal Channels (§14.5); opening a file Channel does not reserve an unlimited set of streams. Implementations MUST bound buffered file data and open file resources; QUIC flow control MUST apply to file data. Per-operation limits belong to PE002–PE003.
+- A sender SHOULD prioritize control and interactive terminal traffic over bulk file data. Independent streams do not provide independent Connection congestion control.
+
+## 16.4	Lifecycle and interruption
+- Channel states: Opening → Ready → Closed; rejection goes from Opening to Closed. An operation can run only in Ready. Closed is final.
+- A Client closes an idle Channel with FIN; the Server releases its Channel resources and finishes its direction with FIN. A Server ending an idle Channel similarly sends FIN; the Client finishes its direction. FIN alone MUST NOT be interpreted as successful completion of a file operation.
+- An interrupted operation (FIN before its required result, reset or Connection loss) has an unknown outcome unless an operation-specific result proves otherwise. In particular, a Client MUST NOT blindly retry a potentially completed modifying operation. Commit, cleanup and partial-file semantics belong to PE002–PE004; Channel closure promises neither rollback nor deletion of partial output.
+- Cancellation or a local Channel failure uses RESET_STREAM and STOP_SENDING (§13). Resources owned only by the Channel are released; other Channels and terminal Sessions continue. Invalid protocol messages remain Connection errors (§0.2, §11.4).
+- QUIC migration preserves the Channel. Connection loss ends it; a new Connection requires full authentication, capability negotiation and a new Channel. Reopening alone does not resume a transfer; resume is specified by PE004.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -1019,3 +1085,5 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-31 (2026-10-18): a fresh replay starts with the current screen (§15.11); replaces the offset 0 rule of draft-29.
 - draft-32 (2026-11-03): Client side of resume: terminal modes on a resume without loss (§15.11); key checks and input during automatic reattach (§15.12).
 - draft-33 (2026-11-03): a Client notices a change of its address and migrates at once (§15.12).
+- draft-34 (2026-11-08): proposed file transfer Channel envelope (§16). Corrected the stale specification header, which still named draft-31 despite the draft-32 and draft-33 history entries.
+- draft-35 (2026-11-08): PE001 Channel model decided: independent of Sessions, one stream per Channel, sequential operations and negotiated parallel Channel limit; registered capability 1, Channel kind 2 and FILES_READY (0x4000).
