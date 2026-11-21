@@ -35,10 +35,10 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 
 # 5	Tier PE — File Transfer
 - [x] PE001  file transfer Channel ➕ 2026-10-13 ✅ 2026-11-08
-- [ ] PE002  file operations: transfer and management, with the Account's permissions ➕ 2026-10-13
-- [ ] PE003  data transfer: chunking, integrity, large files ➕ 2026-10-13
-- [ ] PE004  resume of interrupted transfers ➕ 2026-10-13
-- [ ] PE005  file metadata and paths across platforms ➕ 2026-10-13
+- [x] PE002  file operations: transfer and management, with the Account's permissions ➕ 2026-10-13 ✅ 2026-11-17
+- [x] PE003  data transfer: chunking, integrity, large files ➕ 2026-10-13 ✅ 2026-11-17
+- [x] PE004  resume of interrupted transfers ➕ 2026-10-13 ✅ 2026-11-17
+- [x] PE005  file metadata and paths across platforms ➕ 2026-10-13 ✅ 2026-11-17
 
 # 6	Tier PF — Client-side File Access
 - [ ] PF001  trust model and permission grants ➕ 2026-10-13

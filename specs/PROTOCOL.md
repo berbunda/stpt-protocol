@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-35 (2026-11-08). Changes: see Document history.
+Specification version: draft-41 (2026-11-21). Changes: see Document history.
 
 # 0	Conventions
 
@@ -367,7 +367,7 @@ Assigned core types:
 | 30 | SESSION_DETACH | §15.9 |
 | 31 | SESSION_LIST | §15.10 |
 
-Assigned capability message types: 0x4000 — FILES_READY (capability 1, §16.2).
+Assigned capability message types (capability 1): 0x4000 — FILES_READY (§16.2); 0x4001 — FILE_REQUEST, 0x4002 — FILE_RESULT, 0x4003 — FILE_ENTRIES, 0x4004 — FILE_ACCEPTED (§16.5); 0x4005 — FILE_DATA, 0x4006 — FILE_END, 0x4007 — FILE_RECEIVED (§16.10).
 
 There are no error or close messages: errors use QUIC mechanisms (§13.1).
 
@@ -456,7 +456,7 @@ auth-signed-data = [
 Errors use QUIC mechanisms; there is no error message:
 - Connection error: CONNECTION_CLOSE (application variant) with an error code (§13.2). A regular close uses NO_ERROR.
 - Stream error: RESET_STREAM and STOP_SENDING with an error code; the Connection stays open.
-- Errors of individual requests (e.g. Session termination) are reported in REQUEST_RESULT (§8.4).
+- Errors of individual control requests (e.g. Session termination) are reported in REQUEST_RESULT (§8.4); file operation outcomes use FILE_RESULT (§16.5).
 - Reason phrase of CONNECTION_CLOSE:
   - A close initiated by the STPT implementation (every application close, and a transport close it chooses itself) MUST have an empty reason phrase before the Connection is Authenticated. Afterwards the reason phrase MAY contain a short diagnostic text and MUST NOT contain secrets.
   - Diagnostic text that the QUIC or TLS implementation adds on its own to a transport close (e.g. after a failed TLS handshake) is outside this rule. An implementation SHOULD suppress it before authentication where its QUIC or TLS implementation allows.
@@ -471,8 +471,8 @@ Errors use QUIC mechanisms; there is no error message:
 | 2 | INTERNAL_ERROR | Connection, stream | local failure |
 | 3 | VERSION_NEGOTIATION_FAILED | Connection | no common wire version (§11.1) |
 | 4 | AUTH_FAILED | Connection | authentication attempts exhausted (§12.4) |
-| 5 | TIMEOUT | Connection, stream | a deadline of §13.3 expired |
-| 6 | LIMIT_EXCEEDED | Connection, stream, request | a limit of §13.4 exceeded |
+| 5 | TIMEOUT | Connection, stream | a protocol deadline expired (§13.3, §16.2, §16.13) |
+| 6 | LIMIT_EXCEEDED | Connection, stream, request | a protocol or configured resource limit exceeded (§13.4, §16) |
 | 7 | CHANNEL_REJECTED | stream | CHANNEL_OPEN rejected (§8.3) |
 | 8 | SERVER_SHUTDOWN | Connection | the Server is shutting down |
 | 9 | SESSION_NOT_FOUND | stream, request | no Session with this ID for the Account (§15.2) |
@@ -490,6 +490,8 @@ Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above ar
 | Connection Authenticated after it becomes Established | 60 s | Server closes with TIMEOUT |
 | QUIC idle timeout (`max_idle_timeout`) | 60 s | Connection closed silently (RFC 9000 §10.1) |
 | progress of a stalled terminal stream | 10 s | Server ends the Attachment with TIMEOUT (§15.9) |
+| FILES_READY received after CHANNEL_OPEN | 10 s | Client aborts only the file Channel with TIMEOUT (§16.2) |
+| progress of a file operation | 60 s | Endpoint aborts only the file Channel with TIMEOUT (§16.13) |
 
 - Defaults are RECOMMENDED; a Server MAY configure other values.
 - A Client SHOULD send QUIC PING frames when the Connection has been idle for 15 s, so an idle terminal keeps its Connection. Session survival does not depend on this (§3.4).
@@ -506,6 +508,7 @@ limits = {
 - Account name: at most 256 bytes.
 - Terminal parameters and environment: §14.6.
 - Outstanding requests per Connection: §8.4. Sessions per Account: §15.8. Attachments per Session: §15.9.
+- File Channels, open resources, staging and transfer sizes: §16.2, §16.9–§16.10, §16.13 and §16.16.
 - Failed authentication attempts per Connection: default 6; a Server MAY use a lower value.
 - A violated limit is answered with LIMIT_EXCEEDED.
 
@@ -945,16 +948,16 @@ Terminal modes:
 
 # 16	File transfer Channel
 
-Status: draft Channel envelope (PE001, 2026-11-08). Not implemented in the program. File operation messages remain to be specified by PE002–PE005 before this profile can perform file operations.
+Status: draft file transfer profile 1 (PE001–PE005). Not implemented in the program.
 
 ## 16.1	Purpose and boundaries
 - A file transfer Channel provides Client-initiated transfer and management of files on the Server, with the permissions of the authenticated Account. Upload and download use the same Channel kind.
 - The Channel belongs to its Connection, independently of any terminal Session or Attachment. Opening it neither creates nor attaches to a Session. No terminal is required.
 - The Server MUST NOT gain access to Client files merely because this Channel exists. The Client chooses local sources and destinations; Server-initiated access to Client files is a separate service (Tier PF).
-- File operations and their results, transfer data and integrity checks, resume, metadata and paths are specified separately by PE002–PE005. This section defines the Channel envelope only; it does not yet define an executable file operation.
+- Operation requests and outcomes are defined in §16.5–§16.9 (PE002), transfer data and integrity checks in §16.10–§16.13 (PE003), resume in §16.14–§16.17 (PE004), and paths and metadata in §16.18–§16.20 (PE005).
 
 ## 16.2	Negotiation and opening
-Allocations: capability id 1 (`file-transfer`), Channel kind 2 (`files`), message type 0x4000 (`FILES_READY`). FILES_READY is a capability message, not a core message. This optional extension does not change the current wire version.
+Allocations: capability id 1 (`file-transfer`), Channel kind 2 (`files`), message types 0x4000–0x4007 (§11.3). These are capability messages, not core messages. This optional extension does not change the current wire version.
 
 The Client offers capability 1 in CLIENT_HELLO with these parameters:
 ```
@@ -992,7 +995,7 @@ files-ready = [
 ## 16.3	Stream and concurrency
 - Each file transfer Channel uses exactly one client-initiated bidirectional QUIC stream, using the framing, CBOR and peer message-size limits of §7 and §13.4. No raw byte mode or extra data stream is introduced.
 - After FILES_READY the Channel carries only messages defined for this file-transfer profile. The Server MUST perform file operations with the Account's permissions, never with additional privileges of the Server process.
-- At most one operation is outstanding on a Channel. A Client may reuse an idle Channel for subsequent operations; parallel operations use separate Channels, opened as needed up to the selected maximum (§16.2). PE002–PE003 must define when an operation finishes before a successor may begin.
+- At most one operation is outstanding on a Channel. A Client may reuse an idle Channel for subsequent operations after receiving FILE_RESULT (§16.5); parallel operations use separate Channels, opened as needed up to the selected maximum (§16.2).
 - The Client MUST NOT exceed the selected maximum, counting Channels from sending CHANNEL_OPEN until both stream directions have ended or been aborted. The Server MUST enforce the maximum and rejects an excess opening with LIMIT_EXCEEDED without affecting other Channels. A lower currently available QUIC stream budget can further restrict parallelism; selection does not reserve streams.
 - File Channels share the Connection's stream budget with terminal Channels (§14.5); opening a file Channel does not reserve an unlimited set of streams. Implementations MUST bound buffered file data and open file resources; QUIC flow control MUST apply to file data. Per-operation limits belong to PE002–PE003.
 - A sender SHOULD prioritize control and interactive terminal traffic over bulk file data. Independent streams do not provide independent Connection congestion control.
@@ -1000,9 +1003,305 @@ files-ready = [
 ## 16.4	Lifecycle and interruption
 - Channel states: Opening → Ready → Closed; rejection goes from Opening to Closed. An operation can run only in Ready. Closed is final.
 - A Client closes an idle Channel with FIN; the Server releases its Channel resources and finishes its direction with FIN. A Server ending an idle Channel similarly sends FIN; the Client finishes its direction. FIN alone MUST NOT be interpreted as successful completion of a file operation.
-- An interrupted operation (FIN before its required result, reset or Connection loss) has an unknown outcome unless an operation-specific result proves otherwise. In particular, a Client MUST NOT blindly retry a potentially completed modifying operation. Commit, cleanup and partial-file semantics belong to PE002–PE004; Channel closure promises neither rollback nor deletion of partial output.
+- An interrupted operation (FIN before its required result, reset or Connection loss) has an unknown outcome unless the operation rules establish otherwise. In particular, a Client MUST NOT blindly retry a potentially completed modifying operation. Publication and cleanup rules are in §16.8 and §16.16. Channel closure alone promises no rollback of an already committed operation.
 - Cancellation or a local Channel failure uses RESET_STREAM and STOP_SENDING (§13). Resources owned only by the Channel are released; other Channels and terminal Sessions continue. Invalid protocol messages remain Connection errors (§0.2, §11.4).
-- QUIC migration preserves the Channel. Connection loss ends it; a new Connection requires full authentication, capability negotiation and a new Channel. Reopening alone does not resume a transfer; resume is specified by PE004.
+- QUIC migration preserves the Channel. Connection loss ends it. A new Connection requires full authentication, capability negotiation and a new Channel. Resume requires an explicit request on a new file Channel (§16.14).
+
+## 16.5	Operation exchange
+All messages below travel on the file Channel, never on the control stream. Path and entry encodings are in §16.18–§16.19.
+```
+file-request = [
+  type: FILE_REQUEST,             ; 0x4001, Client -> Server
+  body: {
+    0 => uint,                    ; operation ID
+    1 => uint,                    ; operation kind (§16.6)
+    2 => file-path,               ; source or target path
+    ? 3 => file-path,             ; required for rename only; destination
+    ? 4 => bool,                  ; replace, write/rename only; default false
+    ? 5 => file-size,             ; required for write only (§16.10)
+    ? 6 => file-hash-id,          ; read/write only, default 1 (§16.10)
+    ? 7 => file-resume-request,   ; resume or opt in to upload retention (§16.14)
+    * int => any,
+  },
+]
+file-result = [
+  type: FILE_RESULT,              ; 0x4002, Server -> Client
+  body: {
+    0 => uint,                    ; operation ID
+    1 => uint,                    ; file status (§16.7)
+    ? 2 => file-metadata,         ; successful stat only
+    * int => any,
+  },
+]
+file-entries = [
+  type: FILE_ENTRIES,             ; 0x4003, Server -> Client
+  body: {
+    0 => uint,                    ; operation ID
+    1 => [+ file-entry],          ; names and metadata (§16.19)
+    * int => any,
+  },
+]
+file-accepted = [
+  type: FILE_ACCEPTED,            ; 0x4004, Server -> Client
+  body: {
+    0 => uint,                    ; operation ID
+    1 => file-size,               ; exact transfer length (§16.10)
+    2 => file-hash-id,            ; accepted hash algorithm (§16.10)
+    ? 3 => file-resume-accepted,  ; required when request field 7 is present
+    * int => any,
+  },
+]
+```
+- The Client chooses strictly increasing operation IDs on each Channel, starting at 0. IDs are not durable transaction IDs and have no meaning on another Channel. Before an ID would overflow the CBOR unsigned integer range, the Client opens a new Channel.
+- After FILES_READY the Client sends one FILE_REQUEST and waits for its final FILE_RESULT before starting the next operation. The Server sends exactly one FILE_RESULT per request unless the Channel is interrupted. Receipt of a second outstanding request, an incorrect operation ID, a duplicate result, or a message in the wrong direction or phase is PROTOCOL_VIOLATION.
+- `stat`, `mkdir`, `remove` and `rename` receive only FILE_RESULT. `list` receives zero or more FILE_ENTRIES followed by FILE_RESULT. Only `read` and `write` receive FILE_ACCEPTED, at most once, followed by the transfer exchange in §16.10–§16.12 and a final FILE_RESULT. A refusal before acceptance is a FILE_RESULT with nonzero status and no transfer exchange.
+- FILE_ACCEPTED means that the Server has opened the source or prepared a private staging file and permits the transfer phase; it is not completion or a promise that the transfer will succeed. The Client MUST NOT send upload data before it receives FILE_ACCEPTED.
+- Status 0 is final success. A nonzero status ends the operation as a failure, without closing the Channel; reuse is permitted only after the synchronization in §16.12. A failure that cannot be synchronized ends the Channel with a stream error instead. Neither FIN nor FILE_ACCEPTED substitutes for FILE_RESULT.
+- A successful `stat` result MUST contain field 2. All other results, including failed `stat` results, MUST omit it. Required result fields are validated even for an unknown nonzero status.
+- Defined fields used for another operation kind, a missing required field, or an incorrect field type are protocol violations. A well-formed request with an unknown operation kind receives UNSUPPORTED, with no filesystem effects. Unknown extension fields follow §11.4.
+- A `rename` request MUST contain field 3; all other known operation kinds MUST omit it. Field 4 is permitted only for `write` and `rename`.
+
+## 16.6	Operations
+| Kind | Name | Meaning |
+|---|---|---|
+| 1 | read | Download one regular file. No implicit directory traversal or archive conversion. |
+| 2 | write | Upload one regular file to a destination path; publish as specified in §16.8. |
+| 3 | stat | Return metadata of the named directory entry, without following a final symbolic link. |
+| 4 | list | Enumerate the immediate entries of one directory. |
+| 5 | mkdir | Create one directory; its parent must exist. An existing entry is ALREADY_EXISTS. |
+| 6 | remove | Remove one non-directory entry, or one empty directory. |
+| 7 | rename | Atomically move one directory entry to the destination in field 3. |
+
+- Paths are Server paths interpreted under §16.18. No operation executes a shell, expands wildcards, interprets environment variables or creates missing parent directories. Recursive copying or removal is not a primitive in this profile. A Client must request individual operations explicitly.
+- Path traversal uses the Account's filesystem permissions and any stricter Server policy (§16.9). On POSIX, `read` and `list` MAY follow final symbolic links to a regular file and a directory respectively. Windows reparse points follow §16.18. Devices, FIFOs and sockets MUST NOT be read or written as file transfers.
+- `stat`, `remove` and the source of `rename` operate on the final directory entry itself: a final symbolic link is inspected, removed or moved, not its target. `remove` never recurses and returns NOT_EMPTY for a nonempty directory.
+- `write` defaults to create-only. With `replace=true`, an existing destination MUST be a regular file. Replacement publishes a new file object. Existing hard links and already-open handles can still refer to the old object. New object metadata follows §16.20.
+- `rename` defaults to no replacement. With `replace=true`, compatible existing entries may be replaced according to the Server filesystem's rename rules; a replaced directory must be empty. A destination symbolic link is replaced as an entry, never followed. The rename MUST be atomic; if this is unavailable (including a cross-filesystem move), return UNSUPPORTED, never fall back to copy-and-delete. A rename resolving to the same entry may succeed without a change if the filesystem supports it.
+- Replacement is an explicit Client request, not a Server prompt. The Server MUST enforce create-only/no-replace at the filesystem mutation itself, not through an earlier existence check followed by an unconditional replacement. If the platform cannot enforce the requested semantics it returns UNSUPPORTED.
+- `list` uses bounded FILE_ENTRIES messages that fit the Client's message-size limit. It MUST NOT collect an unbounded directory in memory. Names represent immediate entries (§16.19). The Server MUST omit the special entries `.` and `..` if its native enumeration returns them. An empty directory produces no FILE_ENTRIES, only FILE_RESULT(OK). Order is unspecified. Concurrent changes can affect enumeration. Data before a failed or interrupted final result is an incomplete listing.
+- A read is not a snapshot either. Concurrent modification can change the bytes observed; §16.11 defines byte counts and integrity verification without claiming a consistent filesystem snapshot. Separate Channels have no shared operation ordering or transaction.
+
+## 16.7	File statuses
+FILE_RESULT uses its own status namespace, not the QUIC error-code namespace of §13.2. No operating-system error number or diagnostic text is sent.
+
+| Status | Name | Meaning |
+|---|---|---|
+| 0 | OK | operation completed |
+| 1 | NOT_FOUND | a required path component or entry is absent |
+| 2 | ACCESS_DENIED | Account permissions or Server policy refuse the operation |
+| 3 | ALREADY_EXISTS | destination exists and replacement is not permitted |
+| 4 | NOT_DIRECTORY | a required directory is not a directory |
+| 5 | IS_DIRECTORY | an operation requiring a non-directory encountered a directory |
+| 6 | NOT_EMPTY | directory is not empty |
+| 7 | INVALID_PATH | path is invalid or not representable on the Server platform |
+| 8 | NO_SPACE | storage space or filesystem quota exhausted |
+| 9 | READ_ONLY | target filesystem is read-only |
+| 10 | UNSUPPORTED | operation or required semantics are unsupported |
+| 11 | LIMIT_EXCEEDED | configured resource limit exceeded |
+| 12 | IO_ERROR | other filesystem or local I/O failure |
+| 13 | INTEGRITY_ERROR | transfer verification failed (§16.11) |
+| 14 | RESUME_UNAVAILABLE | saved transfer cannot be resumed (§16.17) |
+| 15 | RESUME_BUSY | matching upload may still be active (§16.17) |
+
+- Unknown nonzero statuses are failures equivalent to IO_ERROR, never success. A response with invalid CBOR or invalid field types remains a protocol violation.
+- The Server maps native errors to these statuses without exposing privileged path information. Policy may return ACCESS_DENIED instead of revealing whether an inaccessible entry exists; the Server MUST NOT probe it with elevated credentials to produce a more specific status.
+- A failure result does not imply that any bytes already downloaded can be trusted, that a listing is complete, or that arbitrary native filesystem failures have transactional rollback. The stronger upload publication rules are in §16.8. Detailed diagnostics belong in the Server log.
+
+## 16.8	Upload publication and interruption
+- A write stages data in a newly created private regular file on the destination filesystem. Staging MUST NOT truncate or modify an existing destination. The Server MUST prevent other Accounts from reading or changing staged data and MUST NOT reuse an attacker-controlled staging entry. A failed setup receives a failure result before FILE_ACCEPTED.
+- Publication occurs only after the complete transfer and successful verification defined by PE003. It atomically installs the staged file at the requested destination with the requested replacement policy and the Account's permissions. If publication cannot preserve these guarantees, the operation fails rather than exposing a partial destination.
+- OK is sent only after publication succeeds. Success means logical filesystem completion, not guaranteed persistence after power loss; no storage durability barrier is promised by this profile.
+- Failure before publication leaves an existing destination untouched by this operation and does not install the new destination. The Server removes unpublished staging data on failure or cancellation except for an eligible interruption under §16.16. Cleanup failures MUST be logged, and remaining staging data MUST retain its access protections. Retention never exposes partial data at the final path.
+- Cancellation is a stream reset (§16.4), not a rollback request. It can race with publication. If publication succeeded but FILE_RESULT was lost, the Client cannot distinguish success from failure; it MUST report an unknown outcome and MUST NOT automatically repeat a modifying operation. The same uncertainty applies to `mkdir`, `remove` and `rename` after loss of their result. There is no exactly-once guarantee across Channels or Connections.
+- Failure or interruption of a download leaves local destination and partial-file handling to the Client. A Client MUST NOT report a successful download without successful transfer verification and the final OK result. Local file overwrite and cleanup require the Client's own explicit destination policy, not instructions from the Server.
+
+## 16.9	Authorization and resource boundaries
+- Every filesystem access, including path resolution, metadata lookup, directory enumeration, staging, publication and cleanup, MUST use no more authority than the authenticated Account and the Server's file-service policy allow. Server process privileges MUST NOT bypass filesystem permissions, ACLs, quotas or read-only restrictions.
+- Authentication or Channel acceptance is not a cached permission grant for future operations. The Server MUST enforce authorization at each actual access, using the platform's filesystem checks and race-safe filesystem operations. A path check followed by access with elevated credentials is insufficient. Permissions and directory entries may change between operations.
+- File access does not require a Session or a usable interactive shell. Server policy MAY deny file service independently of terminal access. The base profile provides normal Account file access, not an implicit jail within the Account's home; a restricted-root policy requires confinement that remains effective through symbolic links and concurrent path changes.
+- Implementations MUST bound open descriptors, staging bytes, pending listing data and concurrent work. The Server MAY refuse work with LIMIT_EXCEEDED or a stream error when it cannot continue safely. No recursive traversal, executable file content inspection or shell invocation is needed to service these operations.
+
+## 16.10	Transfer messages and sizes
+Profile 1 transfers file data sequentially, starting at offset 0 for a fresh transfer and at the verified offset for resume (§16.14). The data sender is the Client for `write`, the Server for `read`; the other Endpoint is the receiver.
+```
+file-size = 0..2305843009213693951 ; 2^61 - 1 bytes, common size bound
+file-hash-id = uint
+
+file-data = [
+  type: FILE_DATA,               ; 0x4005, data sender -> receiver
+  body: {
+    0 => uint,                  ; operation ID
+    1 => file-size,             ; byte offset
+    2 => bstr .size (1..61440),  ; file bytes, at most 60 KiB
+    * int => any,
+  },
+]
+file-end = [
+  type: FILE_END,                ; 0x4006, data sender -> receiver
+  body: {
+    0 => uint,                  ; operation ID
+    1 => uint,                  ; sender status (§16.7)
+    2 => file-size,             ; start offset plus bytes sent as FILE_DATA
+    ? 3 => bstr .size 32,       ; accepted algorithm's digest, required iff status is OK
+    * int => any,
+  },
+]
+file-received = [
+  type: FILE_RECEIVED,           ; 0x4007, Client -> Server, read only
+  body: {
+    0 => uint,                  ; operation ID
+    1 => uint,                  ; receiver status (§16.7)
+    * int => any,
+  },
+]
+```
+- A write request MUST contain field 5 with the exact number of bytes to upload; other operation kinds MUST omit it. FILE_ACCEPTED field 1 echoes that length for a write; the Client MUST reject a different length as PROTOCOL_VIOLATION. For a read the Server obtains the length from the opened regular file before acceptance. The accepted length is fixed for this operation.
+- A read or write request MAY set field 6 to one algorithm ID. Omission selects BLAKE3 (ID 1). Other operation kinds MUST omit field 6. Profile 1 implementations MUST support BLAKE3 and MAY support SHA-256 (ID 2). The Client MUST support any algorithm it requests.
+- The Server confirms the effective algorithm in FILE_ACCEPTED field 2. If the requested ID is unknown or unavailable, it replies with FILE_RESULT(UNSUPPORTED) before acceptance or transfer data. The Client MUST reject a different accepted ID as PROTOCOL_VIOLATION and MUST NOT automatically retry with another algorithm after a rejection. The accepted ID applies to the entire transfer and any resumed attempt (§16.14).
+- The common length bound is 2^61 - 1 bytes for either algorithm, keeping optional SHA-256 input below 2^64 bits. Implementations MUST use checked integer arithmetic for offsets, lengths and their sums, without truncation to a native word size. Platform or policy limits may be smaller. A valid request beyond a local limit receives LIMIT_EXCEEDED or UNSUPPORTED. Files larger than 4 GiB require no different encoding or additional stream.
+- FILE_DATA is permitted only after FILE_ACCEPTED, with the current operation ID, in the data sender's direction and before FILE_END. Offsets MUST equal the start offset plus preceding data lengths. Gaps, overlap, empty data, offset overflow or data beyond the accepted length are PROTOCOL_VIOLATION. Once the offset reaches the accepted length, only FILE_END may follow in this transfer phase.
+- A sender SHOULD use chunks of 32 KiB by default; chunk boundaries have no file semantics. The 60 KiB maximum leaves room for required CBOR fields within the minimum message-size limit. The entire encoded message, including extension fields, MUST still fit the peer's announced limit (§7.2). No padding to a fixed chunk size is required.
+- An empty file uses no FILE_DATA messages, followed by FILE_END with length 0 and, on success, the selected algorithm's digest of the empty byte sequence. Zero-length data is not an end marker. No compression, sparse-hole instruction, out-of-order block, or per-block acknowledgement is defined in this profile. Sparse files transfer their logical bytes, including zeroes.
+
+## 16.11	Integrity and source consistency
+- A successful transfer MUST use the algorithm confirmed in FILE_ACCEPTED, implemented by a proven cryptographic library. ID 1 is [BLAKE3](https://github.com/BLAKE3-team/BLAKE3-specs) in unkeyed hash mode with its standard 32-byte output. ID 2 is SHA-256 as specified in [FIPS 180-4](https://www.nist.gov/publications/secure-hash-standard). FILE_END carries the 32 raw digest bytes. The digest covers the retained prefix, if any, followed by the ordered concatenation of FILE_DATA byte strings. CBOR, offsets, metadata, block boundaries and other messages are outside the hash input.
+- The sender initializes the hash with the verified prefix on resume and updates it incrementally with the data sent. It sends exactly one FILE_END after its last data message. On success it sends OK with the accepted length and digest. On source failure it sends a nonzero file status and the start offset plus the number of bytes sent, with no digest. No data may follow FILE_END for that operation.
+- The receiver independently counts and hashes the retained prefix and received data. For a successful FILE_END it MUST verify that the declared count, observed count including the prefix, and accepted length agree and that the digest matches before reporting success or publishing an upload. A mismatching count or digest is INTEGRITY_ERROR. A missing or incorrectly typed required field remains PROTOCOL_VIOLATION. A failure FILE_END also MUST report the observed count including the prefix. A mismatch is INTEGRITY_ERROR. A nonzero sender status can never become success.
+- For uploads the Server hashes the bytes it successfully writes to staging; a local write error prevents success. Any buffered writes and close errors relevant to publication MUST be checked before publication and OK. For downloads the Client similarly checks local writes, buffered completion and relevant close errors before acknowledging successful receipt. This verification detects a transfer mismatch; it does not prove that storage will retain the data, require a read-back of the destination, or replace TLS peer authentication and integrity.
+- A read sends exactly the initial accepted length from the opened file: appended bytes are not included. An EOF before that length is a source failure (IO_ERROR), not a successful shorter file. A write Client applies the same rule to its local source and declared length. A sender MAY fail with IO_ERROR if it detects a source change while reading. Neither the hash nor the initial length guarantees a snapshot: concurrent in-place changes may produce a mixture of versions with a valid digest of the bytes actually transferred.
+- The receiver MUST NOT allocate a file-sized buffer or trust an unverified digest or length to authorize filesystem effects. Hash and byte counts are maintained with bounded memory. This specification promises neither a consistent snapshot of a mutable source nor cryptographic protection against an authenticated sender deliberately choosing different contents.
+
+## 16.12	Completion and failure synchronization
+Successful upload:
+```
+Client                                      Server
+  |-- FILE_REQUEST(write, length, [hash ID]) ->|
+  |<----------- FILE_ACCEPTED(length, hash ID)|
+  |-- FILE_DATA* ---------------------------->|
+  |-- FILE_END(OK, length, digest) ----------->|
+  |             verify, close and publish     |
+  |<------------------------- FILE_RESULT(OK)|
+```
+- The Server MUST NOT send an upload FILE_RESULT after acceptance until it has consumed FILE_END. A count mismatch, or a digest mismatch in a successful FILE_END, returns INTEGRITY_ERROR even if the sender also reports a failure. Otherwise, on sender failure it returns that failure status (unknown nonzero statuses map to IO_ERROR); on sender success it verifies local completion and publishes under §16.8, then returns OK or the publication error. Any failure prevents publication. FILE_RECEIVED is not used for uploads.
+- If the Server cannot continue receiving an upload safely (e.g. storage exhaustion, permission loss, or staging failure before FILE_END), it MUST abort the Channel with RESET_STREAM and STOP_SENDING rather than send an early FILE_RESULT or drain an unbounded remainder. Use LIMIT_EXCEEDED for a resource limit, INTERNAL_ERROR for other local failures. File statuses and QUIC error codes are separate namespaces. The Client monitors the receive direction while uploading and stops producing data when the Channel is aborted.
+
+Successful download:
+```
+Client                                      Server
+  |-- FILE_REQUEST(read, [hash ID]) ---------->|
+  |<----------- FILE_ACCEPTED(length, hash ID)|
+  |<----------------------------- FILE_DATA* |
+  |<----------- FILE_END(OK, length, digest)  |
+  | verify and finish local writes           |
+  |-- FILE_RECEIVED(OK) --------------------->|
+  |<------------------------- FILE_RESULT(OK)|
+```
+- After receiving FILE_END the Client MUST send exactly one FILE_RECEIVED, after consuming all preceding data and checking the source status, count, digest and local writes. A count mismatch, or a digest mismatch in a successful FILE_END, takes precedence and is reported as INTEGRITY_ERROR. Otherwise, on sender failure it echoes the nonzero sender status (unknown statuses map to IO_ERROR); on a local destination failure it reports its corresponding nonzero file status. It MUST NOT acknowledge OK unless all these checks succeeded.
+- The Server waits for FILE_RECEIVED before sending the download FILE_RESULT. It returns INTEGRITY_ERROR if the receipt reports that status; otherwise, if its FILE_END status was nonzero, it returns that sender status; otherwise it returns the receipt status. Unknown nonzero statuses map to IO_ERROR. A download receipt before FILE_END was sent, multiple receipts or an upload receipt is PROTOCOL_VIOLATION. The Server MUST monitor incoming messages during sending, not wait until the entire file has been queued before reading its receive direction.
+- A Client unable to continue receiving a download MAY abort the Channel immediately instead of draining the remaining data. On local failure, the sender may likewise abort if it cannot send a well-formed FILE_END at a frame boundary. Aborting uses §16.4 and leaves other Channels and Sessions intact. An Endpoint that started a frame MUST complete that frame before sending another message; it cannot insert FILE_END into a partly written FILE_DATA frame.
+- After FILE_END the sender sends no more transfer data. A final FILE_RESULT proves that the Server consumed the upload end marker, or the Client's download receipt; the Client may then start its next operation with no old transfer messages outstanding. Verification failures after a complete transfer therefore permit Channel reuse. A reset, FIN or lost Connection at any earlier point is interruption, not successful synchronization or completion.
+- If the Client cannot finish the receipt exchange or if the final result is lost, it MUST NOT report successful completion. An upload may already have been published (§16.8); a verified local download may exist but the protocol operation has not completed. Resetting a Channel does not revoke a publication already committed. No automatic retry or resumption is introduced here.
+
+## 16.13	Flow control and progress limits
+- QUIC supplies reliable ordered delivery and flow control. There are no STPT retransmissions or individual chunk acknowledgements. A sender MUST bound its pending data queues and a receiver MUST apply backpressure rather than buffering an entire file. File length, chunk size and Channel parallelism do not reserve memory or disk space.
+- Both Endpoints MUST remain able to process stream aborts, control traffic and local cancellation while sending, receiving or performing filesystem work. A sender SHOULD give interactive and control traffic priority (§16.3). Parallelism uses additional negotiated Channels, not additional streams for one transfer.
+- Implementations SHOULD impose a configurable no-progress deadline (RECOMMENDED 60 s) from sending or receiving FILE_REQUEST through the final FILE_RESULT, including setup, directory enumeration, resume-prefix verification, data transfer and completion. Progress is completion of operation messages or actual local filesystem, I/O or verification work, not keep-alive PINGs or unrelated Connection activity. Deadline expiry aborts only this Channel with TIMEOUT. This bounds stalled operations even if QUIC remains alive; it is not a total operation duration limit. A peer cannot observe the other Endpoint's local work and may time out while that work is still in progress; long prefix verification may therefore require a larger configured deadline. Such an abort follows the usual interruption and unknown-outcome rules.
+- A receiver MUST enforce its configured disk, descriptor and staging limits while work is in progress. An advertised length is not a storage guarantee. Cancellation and lost results follow §16.8 and §16.17. Resume validation and retention are defined in §16.14–§16.17.
+
+## 16.14	Resume requests
+Resume is optional in profile 1, with upload retention and resumed downloads supported independently. FILE_REQUEST field 7 is explicit. A Server that does not support the requested mode returns UNSUPPORTED before acceptance. The Client starts a resumed operation on a new authenticated file Channel, with an operation ID local to that Channel. It MUST verify the same Server Identity and use the original Account. It MUST use the original remote path (§16.18), hash algorithm, transfer length and, for uploads, replacement policy.
+
+```
+file-resume-token = bstr .size 32
+file-prefix-digest = bstr .size 32
+
+file-resume-request =
+    [0]                                           ; fresh write, retain on interruption
+  / [1, file-resume-token]                        ; resume write
+  / [2, file-size, file-size, file-prefix-digest]  ; resume read: total length, offset, digest
+  / [3..18446744073709551615, * any]              ; unknown modes receive UNSUPPORTED
+
+file-resume-accepted =
+    [file-resume-token, file-size, file-prefix-digest] ; write: token, offset, digest
+  / [file-size]                                       ; read: verified offset
+```
+
+- Modes 0 and 1 are write only. Mode 2 is read only. A fresh read needs no advance opt-in. Other operations MUST omit field 7. A known mode with invalid fields or direction is PROTOCOL_VIOLATION. An unknown mode identified by an unsigned integer in the first array element receives UNSUPPORTED. A resume read offset MUST be greater than zero and no greater than its supplied total length.
+- If a request includes field 7 and is accepted, FILE_ACCEPTED MUST include field 3 in the form for that operation. All other acceptances MUST omit field 3. An accepted offset MUST be within the confirmed total length. A fresh retained upload starts at zero and confirms the digest of the empty byte sequence. A resumed upload echoes the same token. A resumed download echoes the exact requested offset and length. A missing, unexpected, malformed or inconsistent acceptance is PROTOCOL_VIOLATION.
+- A prefix is the contiguous byte range from zero up to but excluding the accepted offset. Its digest uses the transfer's confirmed algorithm. Each side rereads its local prefix in bounded buffers and feeds the same bytes into both prefix verification and the full-file hash, for example by finalizing a copy of the hash context. The prefix digest itself MUST NOT be used as input in place of the prefix. Importing serialized library hash state over the wire is outside this profile.
+- After prefix verification, FILE_DATA begins at the accepted offset and transfers the suffix. FILE_END reports the logical count including the prefix. Its success digest covers the whole logical file (§16.11). The accepted offset may equal total length. In that case the sender sends FILE_END with no FILE_DATA and completes the usual result exchange.
+
+## 16.15	Download resume
+- The Client retains a private partial destination and the original Server Identity, Account, remote path, total length and algorithm. It only checkpoints bytes successfully written from complete, contiguous FILE_DATA messages. It verifies its saved offset against the local partial file and recomputes the prefix digest before requesting resume. Unconfirmed bytes past the checkpoint MUST be discarded before appending. The Client MUST prevent changes to the retained prefix by other local operations under its control during resume.
+- The Server holds no download resume record. It opens the source under current authorization and checks that its length equals the supplied original length. It hashes the prefix through the same open file handle it will read the suffix from. If the length or prefix does not match, it returns RESUME_UNAVAILABLE without FILE_ACCEPTED or FILE_DATA. On a match it sends FILE_ACCEPTED and continues from that offset. The Client keeps its prefix hash context and verifies FILE_END before acknowledging successful receipt.
+- This verifies that the retained prefix matches the source bytes reread during resume. The suffix is read from the source during the resumed attempt. A changed suffix may be accepted, and concurrent changes still carry the limits of §16.11. A Client MUST NOT present this as restoration of an immutable historical version or silently overwrite a local destination with unverified output.
+
+## 16.16	Upload checkpoints and publication
+- The Server generates an opaque, unpredictable token using a proven cryptographic random number generator before accepting a write in mode 0. It binds the token to the Server Identity, authenticated Account, destination path, replacement policy, total length, algorithm and private staging object. The token is a lookup key and does not grant filesystem authority. Tokens MUST be protected from disclosure, including in logs and diagnostics.
+- The saved record MUST also identify the destination parent directory resolved during the initial write setup, so a resumed attempt can enforce the parent-identity check in §16.18. A path string alone is not sufficient evidence of directory identity.
+- The Server permits at most one active writer per token across all Channels and Connections. On an eligible interruption it checkpoints a contiguous prefix from complete FILE_DATA messages written to staging. It may roll back to an earlier complete message boundary or to zero. It MUST trim any bytes past that checkpoint before reuse. The offset counts saved bytes. QUIC acknowledgements do not establish a checkpoint. The Client MUST use the offset the Server confirms.
+- Only detected Connection loss or a no-progress timeout before a complete FILE_END has been received can make an upload eligible for retention. A peer may signal a no-progress timeout by aborting the Channel with TIMEOUT. For explicit cancellation the Client aborts with NO_ERROR (§13.2). If the Server observes explicit cancellation, graceful shutdown, malformed messages, local transfer failure or a completed FILE_END, it clears the resumable record. If Connection loss hides a cancellation from the Server, the retained prefix is still subject to the Server's retention limits. Retained prefixes MAY be evicted earlier to enforce quotas.
+- On mode 1 the Server rechecks Account access and file-service policy, verifies the bound arguments, acquires exclusive access to the staging object and recomputes its prefix digest. It sends the token, offset and digest in FILE_ACCEPTED. The Client compares with the prefix of its local source. The source length MUST still match the original length. On a local mismatch after acceptance the Client MUST abort the Channel as a cancellation and MUST NOT send further transfer data. On a match it sends the suffix from the same open source and computes the full-file digest.
+- Processing a complete FILE_END makes the token permanently ineligible for resume before any publication attempt. This transition MUST be serialized with acquiring the token for resume. Publication still requires the full digest check and the same permissions and atomic replacement rules as a fresh write (§16.8). The Server MUST enforce authorization again at publication. A resumed upload cannot obtain permission from the original acceptance or its token.
+- The Server MUST bound the number, total staging bytes and retention time of saved uploads, with per-Account and total limits. A recommended idle retention time is 1 hour from the last interruption. The Server removes expired, evicted and invalidated staging objects, subject to the cleanup rules in §16.8. Upload resume records are scoped to a running Server instance. After a restart old tokens MUST be rejected and abandoned staging MUST be cleaned up safely without publishing it. The Client may enforce its own local retention limits for partial downloads.
+
+## 16.17	Refusal, retry and lost results
+- RESUME_UNAVAILABLE covers expired, evicted, invalid, consumed or mismatched resume state and a changed download length or prefix. The Server uses the same response for an unknown upload token and for one bound to another Account or mismatched arguments. It MUST NOT reveal offsets or the existence of a record to a different Account. A policy or filesystem refusal MAY instead result in ACCESS_DENIED after the request is independently known to be authorized to inspect that resume state.
+- RESUME_BUSY applies to a matching upload attempt whose earlier Channel still owns the token, including while the Server has yet to detect the interruption. The Client MAY retry that same resume request with bounded backoff. RESUME_BUSY never authorizes creating a fresh write. A request exceeding resource limits may receive LIMIT_EXCEEDED.
+- If the Client can establish that no complete FILE_END was sent for a write, it MAY automatically resume that same retained upload, using the original token and normal authorization checks. If it cannot establish this and no final result arrived, the publication outcome is unknown (§16.8). The Client MUST report the uncertainty and MUST NOT automatically resume or submit a fresh write. A later explicitly requested attempt with the original token can only continue an eligible, unpublished checkpoint. RESUME_UNAVAILABLE does not say whether publication occurred.
+- A refused resume does not fall back to an operation from offset zero or to a different algorithm. A fresh transfer requires a separate Client decision. PE004 provides no durable receipt or exactly-once guarantee across Server restarts. Successful resumed transfers use the same FILE_END, FILE_RECEIVED (read only) and FILE_RESULT exchange as fresh transfers.
+
+## 16.18	Path representation and resolution
+```
+posix-name = bstr
+windows-name = tstr
+file-path =
+    [0, [* posix-name]]                           ; absolute POSIX path
+  / [1, tstr, [* windows-name]]                   ; absolute Windows drive path
+```
+
+- Paths identify objects on the Server. For kind 0, components are the exact POSIX name bytes. For example, `/tmp/a` is `[0, [h'746d70', h'61']]`. The empty array denotes the filesystem root. Each component MUST exclude NUL and slash. Backslash is an ordinary byte. Names can contain non-UTF-8 bytes and MUST be preserved exactly.
+- For kind 1, the second element is one uppercase ASCII drive letter, without a colon. For example, `C:\Data\a` is `[1, "C", ["Data", "a"]]`. An empty component array denotes that drive's root. Names are Unicode scalar text encoded as CBOR text strings. A Client may normalize a user-entered drive letter to uppercase before constructing the wire path. The Server MUST use the native Unicode filesystem interface and MUST NOT perform lossy encoding conversion.
+- Components MUST NOT be empty, `.` or `..`. Paths are absolute and have no current-directory, current-drive, home-directory or Session-relative interpretation. Root paths are valid for `stat` and `list` only. The protocol does not case-fold or normalize any name. Native filesystem lookup determines whether different spellings name the same entry.
+- The Windows path kind addresses local volume drives only. UNC paths, network-mapped drives, drive-relative and root-relative paths, device and extended namespaces, and alternate data streams are outside this profile. Windows components MUST exclude U+0000 through U+001F and the characters `< > : " / \ | ? *`. They MUST NOT end in an ASCII space or dot. Reserved DOS device names MUST be rejected, including with an extension and irrespective of ASCII case. Reject `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9` and the superscript digit variants specified by Win32. Match the device name against the stem before its first dot after trimming trailing ASCII spaces. A Server MUST reject any path that its native API would interpret as a device or namespace alias. See [Win32 naming rules](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file).
+- A Server MUST support the path kind for its filesystem interface and MUST reply with UNSUPPORTED if it receives the other kind and does not implement it. A recognized path with invalid component contents, a bad drive letter, an invalid root operation or a native length limit violation receives INVALID_PATH. An invalid array shape or CBOR field type is PROTOCOL_VIOLATION. Encoded messages remain subject to §7.2.
+- A Windows Server MUST NOT traverse a reparse point, in any component, in profile 1. It may inspect a final reparse point as an entry for `stat` or report it in a parent listing. It MAY remove or rename a final symbolic link or junction if the native operation acts on the link entry itself. Replacing a final reparse point by `write` is forbidden. Operations requiring traversal or unsupported mutation return UNSUPPORTED. Servers MUST perform authorization and these checks without a race between validation and use (§16.9). See [Win32 reparse points](https://learn.microsoft.com/en-us/windows/win32/fileio/reparse-points).
+- The Client MUST retain the original path value for resume. Upload tokens bind the exact path kind, drive when present, and ordered component values. An alias spelling is a mismatch even if it resolves to the same entry. If the verified destination parent now resolves to a different directory from the original upload, resume returns RESUME_UNAVAILABLE. Publication MUST target the verified directory and apply current authorization and replacement rules (§16.8, §16.16).
+
+## 16.19	Entries and metadata
+```
+file-entry = [
+  posix-name / windows-name,                     ; one immediate entry name
+  file-metadata,
+]
+
+file-time = [ -9223372036854775808..9223372036854775807, 0..999999999 ]
+file-metadata = {
+  0 => uint,                                     ; entry kind below
+  ? 1 => uint,                                   ; logical size in bytes, regular files only
+  ? 2 => file-time,                              ; modification time
+  ? 3 => 0..511,                                 ; POSIX rwx mode bits
+  ? 4 => bool,                                   ; Windows read-only attribute
+  * int => any,
+}
+```
+
+| Kind | Entry |
+|---|---|
+| 0 | Other or unknown |
+| 1 | Regular file |
+| 2 | Directory |
+| 3 | Symbolic link, including a Windows junction |
+
+- The Server MUST send field 1 for a regular file and omit it for other kinds. File size is the observed logical length, which may exceed the transfer limit. Field 2 is an optional UTC timestamp as whole seconds since 1970-01-01T00:00:00Z plus a nonnegative nanosecond fraction. For example, half a second before the epoch is `[-1, 500000000]`. A missing field means unavailable or not reported. An unknown entry kind is treated as other, with no assumptions about its attributes.
+- Field 3 is optional and contains only the low nine POSIX permission bits. Field 4 is optional and describes the Windows read-only attribute. Each field applies only to the corresponding path kind. These values are informational. Access depends on the actual filesystem, ACLs and Server policy. Listing and stat do not expose owners, ACLs, link targets, security descriptors, extended attributes or native IDs in profile 1.
+- Both `stat` and directory entries report metadata for the named object before any final link is followed. An unknown Windows reparse point is reported as kind 0. A listing name MUST use the matching path kind's component rules, including the name representation and validity checks. A Server that cannot encode an encountered entry, for example a Windows name with an unpaired surrogate, MUST end the list with UNSUPPORTED. If a single entry cannot fit the peer's message limit, the Server ends the list with LIMIT_EXCEEDED. Earlier batches remain an incomplete listing. An invalid listing name or metadata field for a known entry kind is PROTOCOL_VIOLATION.
+- A name received from the Server is one remote component. For any local path derived from it, the Client MUST validate it as exactly one component under the local filesystem's rules, reject unrepresentable names without lossy substitution, and prevent escape through local links or reparse points. If different remote names would resolve to the same local destination, the Client MUST reject the collision or require explicit distinct local names. Terminal display MUST escape control characters in remote names.
+
+## 16.20	Metadata on creation and replacement
+- Metadata in §16.19 is read-only on the wire. A transfer carries file contents. Profile 1 does not copy source timestamps, permissions, owners, ACLs, attributes or special bits to the destination. A destination uses its own filesystem metadata and applicable Server or Client policy.
+- The Server creates private upload staging under the Account's authority (§16.8). Publication MUST keep the uploaded object private to the Account under ordinary filesystem access. On POSIX the initial requested file mode is at most `0600`, with no executable or special bits. On Windows the Server MUST use an access descriptor and publication procedure that keep the object private to the Account under ordinary access, subject to system administration. If the platform or filesystem cannot provide this guarantee, the Server returns UNSUPPORTED.
+- With `replace=true` a successful upload installs the new object's ownership, access controls and timestamps. It does not copy the old destination's metadata or broaden access through an inherited or retained ACL. `mkdir` uses native creation defaults under Account permissions and Server policy. `rename` moves an existing object with native rename metadata semantics. None of these operations accepts metadata overrides.
 
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
@@ -1087,3 +1386,9 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-33 (2026-11-03): a Client notices a change of its address and migrates at once (§15.12).
 - draft-34 (2026-11-08): proposed file transfer Channel envelope (§16). Corrected the stale specification header, which still named draft-31 despite the draft-32 and draft-33 history entries.
 - draft-35 (2026-11-08): PE001 Channel model decided: independent of Sessions, one stream per Channel, sequential operations and negotiated parallel Channel limit; registered capability 1, Channel kind 2 and FILES_READY (0x4000).
+- draft-36 (2026-11-17): PE002 file operation model: sequential requests and final results, operation statuses, bounded listing, Account authorization, atomic upload publication and explicit replacement. Transfer framing, resume and path/metadata encodings remain PE003–PE005.
+- draft-37 (2026-11-17): PE003 sequential bounded file blocks, declared lengths, incremental SHA-256, explicit end/receipt/result synchronization, large-file limits and Channel-local interruption. Resume and path/metadata encodings remain PE004–PE005.
+- draft-38 (2026-11-17): PE003 makes BLAKE3 the required and default file hash and adds optional SHA-256. Each transfer confirms its algorithm before file data and retains that choice for resume.
+- draft-39 (2026-11-17): PE004 adds optional read and write resume with verified prefixes, Account-bound upload tokens, bounded staging retention and publication safeguards. Path and metadata encodings remain PE005.
+- draft-40 (2026-11-17): PE005 specifies absolute POSIX and Windows paths, listing and stat metadata, exact path binding for resume, and safe destination metadata. The draft definition of file transfer profile 1 now covers PE001–PE005.
+- draft-41 (2026-11-21): scenario review of Tier PE clarifies required rename fields, empty and special directory entries, integrity-error precedence, operation-wide progress deadlines and retained upload parent identity; synchronizes the timeout and resource-limit registries. Review results: docs/PE_REVIEW.md. No wire allocations or program implementation changed.
