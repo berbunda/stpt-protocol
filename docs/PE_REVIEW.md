@@ -2,7 +2,7 @@
 
 Date: 2026-11-21. Specification reviewed: draft-40, with clarifications incorporated in draft-41. Scope: PE001–PE005 and their interaction with framing, negotiation, errors and resource limits.
 
-This is a specification walkthrough, not runtime testing, a formal proof, or a complete CDDL validator run. At review time, file transfer was not implemented in `stpt` and RE001–RE004 were open. The subsequent RE001 envelope implementation is recorded in DECISIONS.md §19; file operations remain unimplemented. Existing PE completion dates denote specification work, not this review or implementation.
+This is a specification walkthrough, not runtime testing, a formal proof, or a complete CDDL validator run. At review time, file transfer was not implemented in `stpt` and RE001–RE004 were open. Subsequent RE001/RE002 implementation and runtime validation are recorded in DECISIONS.md §19–§20. The scenario table below remains a record of the earlier specification review. Existing PE completion dates denote specification work, not this review or implementation.
 
 ## Scenario results
 

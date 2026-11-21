@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-42 (2026-11-21). Changes: see Document history.
+Specification version: draft-43 (2026-11-21). Changes: see Document history.
 
 # 0	Conventions
 
@@ -948,7 +948,7 @@ Terminal modes:
 
 # 16	File transfer Channel
 
-Status: draft file transfer profile 1 (PE001–PE005). The program implements the Channel envelope (RE001) only; file operations, transfers, resume, paths and metadata remain unimplemented (RE002–RE004). Envelope support alone does not imply full profile-1 conformance.
+Status: draft file transfer profile 1 (PE001–PE005). The program implements the Channel envelope (RE001), POSIX Server file operations and ordinary verified transfers (RE002), including base path and mandatory kind/size metadata. Resume (RE003), Windows Server paths and extended metadata (RE004) remain open. Implementation limitations are recorded in DECISIONS.md §20 and the program architecture; no full profile-1 conformance is claimed.
 
 ## 16.1	Purpose and boundaries
 - A file transfer Channel provides Client-initiated transfer and management of files on the Server, with the permissions of the authenticated Account. Upload and download use the same Channel kind.
@@ -1393,3 +1393,4 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-40 (2026-11-17): PE005 specifies absolute POSIX and Windows paths, listing and stat metadata, exact path binding for resume, and safe destination metadata. The draft definition of file transfer profile 1 now covers PE001–PE005.
 - draft-41 (2026-11-21): scenario review of Tier PE clarifies required rename fields, empty and special directory entries, integrity-error precedence, operation-wide progress deadlines and retained upload parent identity; synchronizes the timeout and resource-limit registries. Review results: docs/PE_REVIEW.md. No wire allocations or program implementation changed.
 - draft-42 (2026-11-21): records the RE001 Channel envelope implementation status. File operations remain unimplemented; no normative wire changes.
+- draft-43 (2026-11-21): records RE002 POSIX file operations and verified transfer implementation, with explicit remaining limits. No normative wire changes.
