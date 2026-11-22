@@ -23,7 +23,7 @@ Do not create differences for the sake of differences.
 - Application language: Rust.
 - Primary platforms: Windows 11 x86-64 and Debian-based Linux x86-64.
 - One source project; each platform build is a single binary acting as client and server, mode selected via CLI. Builds are platform-specific.
-- Interactive terminal: PTY on Linux; ConPTY for a future Windows server mode.
+- Interactive terminal: PTY on Linux; ConPTY on Windows (RC008, §23).
 - ✅ 2026-10-14 The command line is the same on every platform; Windows builds keep the `server` subcommand and refuse it with an error (gate G2) until RC008, instead of hiding it (RA003).
 
 # 4	Architectural model
@@ -225,7 +225,7 @@ Start with a narrow MVP verifiable on a local VM.
 # 19	File Channel envelope implementation (RE001)
 - ✅ 2026-11-21 The program implements capability-1 negotiation, FILES_READY and kind-2 dispatch after authentication, independently of terminal Sessions. Server `max_file_channels` defaults to 8; 0 disables selection. Terminal commands retain their existing offers; the internal Client API can offer file Channels explicitly. The wire version is unchanged.
 - ✅ 2026-11-21 Per-Connection admission slots cover opening and both stream directions. Limits, cancellation and opening timeouts affect only the file Channel; protocol violations close the Connection. File stream priority is below control and terminals. No filesystem access or file operations are implemented: FILE_REQUEST currently aborts its Channel with INTERNAL_ERROR until RE002 supplies the dispatcher. No full file-profile conformance is claimed.
-- At the RE001 milestone, RE002–RE004 remained open. Current implementation status is recorded in §20–§22; envelope architecture is in the program's docs/ARCHITECTURE.md §12.
+- At the RE001 milestone, RE002–RE004 remained open. Current implementation status is recorded in §20–§23; envelope architecture is in the program's docs/ARCHITECTURE.md §12.
 
 # 20	File operations implementation (RE002)
 - ✅ 2026-11-21 `stpt fs` implements explicit push/pull/stat/list/mkdir/remove/rename, with existing trust/authentication and no terminal Session. Server paths are absolute POSIX paths; mandatory kind/size metadata is supported. At this milestone resume requests received UNSUPPORTED, without implicit restart; RE003 and RE004 remained open. Subsequent resume implementation is recorded in §21.
@@ -245,3 +245,10 @@ Start with a narrow MVP verifiable on a local VM.
 - ✅ 2026-11-22 Linux stat/list report non-followed final-entry kind, regular size, modification time (including pre-epoch fractions) and low-nine-bit POSIX rwx mode. Client parsing validates corresponding path-kind attributes, Windows Unicode names/read-only metadata and unknown fields/kinds conservatively. Optional `--metadata` preserves the default CLI columns. No source metadata is copied or accepted as a setter; upload privacy/native rename policy remains in force.
 - ✅ 2026-11-22 G2 is unchanged: Windows Server execution awaits RC008. Windows Client grammar/metadata handling is complete for RE004; native Windows Account/drive/reparse traversal and Server publication integration must be implemented and tested when that gate is lifted. Codec validation is not claimed as native filesystem authorization or race-free reparse enforcement. No Windows Server conformance claim is made.
 - ✅ 2026-11-22 Tests cover path/Unicode/device boundaries, metadata ranges/platform applicability, actual Unix non-UTF-8 CLI, symlink metadata and private upload policy; program docs/ARCHITECTURE.md §15 records final validation. Tier RE scenario review remains pending and push is explicitly deferred until the user has reviewed the whole Tier.
+
+# 23	Windows terminal Server (RC008)
+- ✅ 2026-11-22 Program 0.4.0-0 enables Windows 11 Server mode with ConPTY and the shared Session/Attachment/request runtime. G2 is resolved. Windows serves only the exact current process Account and token, including its elevation; no password logon, S4U or cross-Account switching is claimed. Other Accounts are refused uniformly. Service installation remains RK007.
+- ✅ 2026-11-22 Windows PowerShell is the fixed Account shell with NoProfile and a rebuilt environment. Login initializes UTF-8/TERM. Argv traverses a private helper of the same binary with bounded CBOR/base64 arguments, avoiding shell interpretation of argument data; implicit batch files are refused. There is no new wire message or cryptographic primitive.
+- ✅ 2026-11-22 Processes start suspended and enter an owned kill-on-close Job before running. ConPTY and pipe I/O have bounded buffers; a dedicated reader drains during pseudoconsole close. Resize, INT through ConPTY, native Job termination and 32-bit exit status map existing protocol semantics. Sessions survive Connection closure, and even a forced Server exit kills descendants. Configuration/key ACLs are checked using opened handles; private keys are atomically protected. Installation and configuration ancestor paths must remain trusted.
+- ✅ 2026-11-22 Windows native file operations are not supplied by ConPTY. G3 disables file capability selection until native volume/reparse/private-publication support exists. RE004's Client grammar/metadata remains available; no Windows Server file-profile conformance is claimed. Tier RE scenario review and push remain pending the user's review.
+- ✅ 2026-11-22 Tests exercise real Windows Server authentication, exact argv/Unicode, shell/stdout/stderr/status, interactive login, ConPTY input/resize/reconnect/interrupt, Session controls, owned descendant and shutdown cleanup, ACL refusal and Linux regressions. Program docs/ARCHITECTURE.md §16 records final validation.
