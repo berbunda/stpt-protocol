@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-44 (2026-11-22). Changes: see Document history.
+Specification version: draft-45 (2026-11-22). Changes: see Document history.
 
 # 0	Conventions
 
@@ -948,7 +948,7 @@ Terminal modes:
 
 # 16	File transfer Channel
 
-Status: draft file transfer profile 1 (PE001–PE005). The program implements the Channel envelope (RE001), POSIX Server file operations and ordinary verified transfers (RE002), including base path and mandatory kind/size metadata. Explicit upload/download resume is implemented (RE003); Windows Server paths and extended metadata (RE004) remain open. Implementation limitations are recorded in DECISIONS.md §20–§21 and the program architecture; no full profile-1 conformance is claimed.
+Status: draft file transfer profile 1 (PE001–PE005). The program implements the Channel envelope (RE001), POSIX Server file operations and ordinary verified transfers (RE002), including base path and mandatory kind/size metadata. Explicit upload/download resume (RE003), Windows drive encoding/Client parsing and informational POSIX metadata (RE004) are implemented on available platforms. Windows Server execution and its native path backend remain gated by G2/RC008; Tier RE scenario review is pending. Implementation limitations are recorded in DECISIONS.md §20–§22 and the program architecture; no full profile-1 conformance is claimed.
 
 ## 16.1	Purpose and boundaries
 - A file transfer Channel provides Client-initiated transfer and management of files on the Server, with the permissions of the authenticated Account. Upload and download use the same Channel kind.
@@ -1396,3 +1396,5 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-43 (2026-11-21): records RE002 POSIX file operations and verified transfer implementation, with explicit remaining limits. No normative wire changes.
 
 - draft-44 (2026-11-22): records RE003 explicit verified upload/download resume, bounded Server-instance retention and Client checkpoints. No normative wire changes.
+
+- draft-45 (2026-11-22): records RE004 path/metadata implementation on available platforms, with native Windows Server behavior still gated by G2/RC008 and Tier RE review pending. No normative wire changes.
