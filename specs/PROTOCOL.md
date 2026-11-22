@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-48 (2026-11-22). Changes: see Document history.
+Specification version: draft-49 (2026-11-22). Changes: see Document history.
 
 # 0	Conventions
 
@@ -948,7 +948,7 @@ Terminal modes:
 
 # 16	File transfer Channel
 
-Status: draft file transfer profile 1 (PE001–PE005). The program implements the Channel envelope (RE001), POSIX Server file operations and ordinary verified transfers (RE002), including base path and mandatory kind/size metadata. Explicit upload/download resume (RE003), Windows drive encoding/Client parsing and informational POSIX metadata (RE004) are implemented on available platforms. Windows terminal Server is implemented (RC008, current Account/token); native Windows local-volume file operations, verified resume and metadata are implemented in program 0.4.1-0 (G3 resolved); Tier RE scenario review is complete in program 0.4.1-1; docs/RE_REVIEW.md records validation scope and fixes. Implementation limitations are recorded in DECISIONS.md §20–§25 and the program architecture; no full profile-1 conformance is claimed.
+Status: draft file transfer profile 1 (PE001–PE005). The program implements the Channel envelope (RE001), POSIX Server file operations and ordinary verified transfers (RE002), including base path and mandatory kind/size metadata. Explicit upload/download resume (RE003), Windows drive encoding/Client parsing and informational POSIX metadata (RE004) are implemented on available platforms. Windows terminal Server is implemented (RC008, current Account/token); native Windows local-volume file operations, verified resume and metadata are implemented in program 0.4.1-0 (G3 resolved); Tier RE scenario review is complete in program 0.4.1-2; docs/RE_REVIEW.md records validation scope and fixes. Implementation limitations are recorded in DECISIONS.md §20–§26 and the program architecture; no full profile-1 conformance is claimed.
 
 ## 16.1	Purpose and boundaries
 - A file transfer Channel provides Client-initiated transfer and management of files on the Server, with the permissions of the authenticated Account. Upload and download use the same Channel kind.
@@ -1404,3 +1404,5 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-47 (2026-11-22): records native Windows current-Account file service, handle-relative volume/reparse enforcement and private atomic upload publication; resolves G3. No normative wire changes.
 
 - draft-48 (2026-11-22): records the completed Windows/Linux Tier RE scenario review and implementation fixes for active FIN/deadlines, verified Client publication and private checkpoint files. No normative wire changes.
+
+- draft-49 (2026-11-22): records the Windows-only 0.4.1-2 follow-up that creates Client resume state with atomic private descriptors and explicit owner; distinguishes final Windows validation from unchanged Linux 0.4.1-1 evidence. No normative wire changes.
