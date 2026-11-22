@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-46 (2026-11-22). Changes: see Document history.
+Specification version: draft-47 (2026-11-22). Changes: see Document history.
 
 # 0	Conventions
 
@@ -948,7 +948,7 @@ Terminal modes:
 
 # 16	File transfer Channel
 
-Status: draft file transfer profile 1 (PE001–PE005). The program implements the Channel envelope (RE001), POSIX Server file operations and ordinary verified transfers (RE002), including base path and mandatory kind/size metadata. Explicit upload/download resume (RE003), Windows drive encoding/Client parsing and informational POSIX metadata (RE004) are implemented on available platforms. Windows terminal Server is implemented (RC008, current Account/token); native Windows file capability remains unavailable (G3); Tier RE scenario review is pending. Implementation limitations are recorded in DECISIONS.md §20–§23 and the program architecture; no full profile-1 conformance is claimed.
+Status: draft file transfer profile 1 (PE001–PE005). The program implements the Channel envelope (RE001), POSIX Server file operations and ordinary verified transfers (RE002), including base path and mandatory kind/size metadata. Explicit upload/download resume (RE003), Windows drive encoding/Client parsing and informational POSIX metadata (RE004) are implemented on available platforms. Windows terminal Server is implemented (RC008, current Account/token); native Windows local-volume file operations, verified resume and metadata are implemented in program 0.4.1-0 (G3 resolved); Tier RE scenario review is pending. Implementation limitations are recorded in DECISIONS.md §20–§24 and the program architecture; no full profile-1 conformance is claimed.
 
 ## 16.1	Purpose and boundaries
 - A file transfer Channel provides Client-initiated transfer and management of files on the Server, with the permissions of the authenticated Account. Upload and download use the same Channel kind.
@@ -1400,3 +1400,5 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-45 (2026-11-22): records RE004 path/metadata implementation on available platforms, with native Windows Server behavior still gated by G2/RC008 and Tier RE review pending. No normative wire changes.
 
 - draft-46 (2026-11-22): records RC008 ConPTY/current-Account Windows terminal Server, retired G2 and separate Windows file-service gate G3. No normative wire changes.
+
+- draft-47 (2026-11-22): records native Windows current-Account file service, handle-relative volume/reparse enforcement and private atomic upload publication; resolves G3. No normative wire changes.
