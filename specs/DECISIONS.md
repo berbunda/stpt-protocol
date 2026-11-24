@@ -89,7 +89,7 @@ Do not create differences for the sake of differences.
 - Short-lived certificates, CA: promising, not required for the first MVP. Hybrid post-quantum key exchange: see §5.
 - Authorization of Session attach and of client file system operations must be defined explicitly.
 - The server never gets access to client files merely because a Connection exists.
-- ❓ Security model of mounting a client directory on the server (reverse mount) requires a separate analysis: PF004.
+- ✅ 2026-11-24 The PF004 security model is specified in PROTOCOL.md §17.8–§17.10. See §30 below.
   - ✅ 2026-10-13 Direction: the Client warns that root on the Server can read the mounted files and requires an explicit `yes`; the mount ends at detach or Session end.
 
 # 7	Features
@@ -268,3 +268,52 @@ Start with a narrow MVP verifiable on a local VM.
 # 26	Atomic Windows Client checkpoint creation
 - ✅ 2026-11-22 Program 0.4.1-2 creates Windows state directories/files with an explicit current-user owner and protected owner/SYSTEM DACL at native creation. Existing unsafe objects or reparses are refused before reading, truncating or writing. This closes the interval in which a briefly inherited ACL could let another reader retain access despite a later restriction.
 - ✅ 2026-11-22 The final Windows standard suite passed 273 tests and Clippy passed, with extended native owner/DACL assertions. Linux runtime behavior is unchanged from the validated 0.4.1-1 run; that run passed 308 plus the explicit large transfer and root file suite 61. The review reports distinguish execution versions rather than claiming a new Linux run for a Windows-only change. No normative wire change or dependency is introduced.
+
+# 27	Client file access trust model (PF001)
+- ✅ 2026-11-24 The local Client owns each grant. Bind it to one live Attachment and its authenticated Connection, Account, Server Identity and Session. A Session can outlive its Client or be shared by several devices. Session ownership therefore cannot identify whose files the user agreed to expose. Same-Connection migration preserves consent. Reattach requires fresh consent.
+- ✅ 2026-11-24 Local approval identifies the object, rights and duration. Separate it from the remote terminal because the Server controls terminal output. A request cannot prove a remote program's identity. A directory mount requires the explicit warning and local yes recorded in §6.
+- ✅ 2026-11-24 Default to denial. Distinguish one operation from continuing access, consume one-shot approval on admission, and check object confinement and authority during every operation. Stop work on revocation or loss of the binding. Previously disclosed bytes and committed changes remain with the recipient.
+- PF001 is specified in PROTOCOL.md §17. PF002–PF004 define subsequent request, Channel and mount mechanics. RF001 remains open.
+
+# 28	Routing requests from a Session (PF002)
+- ✅ 2026-11-24 Bind the local caller to a Running Session through a protected Session-specific interface. The public STPT_SESSION value identifies the Session for display and cannot establish the caller's authority.
+- ✅ 2026-11-24 Select implicitly only when exactly one Attachment is live. With several, expose their IDs to the Session caller and require an explicit selection. Shared terminals merge input and background jobs may have no initiating keyboard. Guessing from activity, or filtering out older Clients before counting, could prompt the wrong person.
+- ✅ 2026-11-24 Pin the selected Attachment and Connection for the attempt. If A and B share a Session and the caller selects A, detaching A cancels the attempt even if B remains or A reconnects. Joining B after selection also cannot redirect the request. Network migration on the same Connection preserves the route.
+- ✅ 2026-11-24 Carry each proposal on its own PF003 Server-opened Channel. The stream associates replies and cancellation with one local caller, including concurrent calls. Terminal replay and the Client-initiated control request registry retain their existing semantics.
+- PROTOCOL.md §17.4 specifies routing. PF003 covers the wire exchange and trusted confirmation, PF004 the mount lifecycle.
+
+# 29	Server-opened Client file access Channel (PF003)
+- ✅ 2026-11-24 Negotiate capability 2 independently of ordinary file transfer. One Server-initiated kind-3 stream carries one proposal to one Attachment. Limit admitted Channels separately from QUIC stream credit. Existing peers can omit the capability and retain their current wire version.
+- ✅ 2026-11-24 Profile 1 supports reading one Client-selected regular file and creating one new Client-selected file. The request states direction and, for creation, exact size. No remote path hint is needed. This keeps the local selection private and makes the consent prompt precise. Directory mounts and their continuing rights belong to PF004.
+- ✅ 2026-11-24 PENDING separates stream admission from user interaction. APPROVED records a local decision. START lets the Server check that the originating call still exists before any bytes or metadata are disclosed. If cancellation crosses START, the Client's observed order and publication boundary govern the effect. A lost modifying result may leave the caller with an unknown outcome.
+- ✅ 2026-11-24 Reuse §16 size bounds, BLAKE3 verification and status semantics with dedicated capability-2 frames. An affirmative answer, a stream FIN and successful publication are distinct events. Only the operation result or verified local delivery establishes success for the caller.
+- ✅ 2026-11-24 Apply finite opening, consent, start and progress deadlines. Ordinary refusals disclose no local path information. Cancellation, timeouts and resource refusals affect one proposal. The complete wire exchange is specified in PROTOCOL.md §17.5–§17.7.
+
+# 30	Client directory mounts (PF004)
+- ✅ 2026-11-24 The first mount profile is read-only. Capability 3 extends capability 2 so a Client can support individual transfers without offering directory access. One Server-opened Channel holds one continuing grant. The Server chooses its own Session-private mountpoint; the Client chooses and pins the local directory.
+- ✅ 2026-11-24 Approval covers repeated listing, metadata and regular-file reads throughout the selected subtree. Require an explicit local yes after warning that Server root can read and copy files. Consent is specific to the selected Attachment even when multiple Clients share a Session. A read-only mount still transfers information that unmount cannot recall.
+- ✅ 2026-11-24 Use relative native components, bounded complete directory listings and positional reads through mount-local open handles. Oversized listings fail explicitly in profile 1. No mutation, execution or link traversal. Linux FUSE implementation belongs to RF004; a Server without a suitable isolated backend omits the capability.
+- ✅ 2026-11-24 A successful mount survives exit of its setup command. Detach of the granting Attachment, Session end, loss of the Connection or local revocation ends it without peer acknowledgement. A busy mountpoint may outlive revocation only as a disconnected view. Neither a second Attachment nor a reconnect inherits the grant.
+
+# 31	Tier PF scenario review
+- ✅ 2026-11-24 Reviewed PF001–PF004 together. Draft-54 makes target selection and pinning one registry decision, binds consent to the selected object across START, and orders cancellation against START, publication and result delivery.
+- ✅ 2026-11-24 The mount extension defines action 3 only when selected. Mount handoff ends setup-caller ownership. Revocation wins over undelivered I/O completions for an invalidated instance, including when its mountpoint is later reused. The prompt explains the exposure to other users driving the same Session.
+- The [scenario report](../docs/PF_REVIEW.md) records the event orders and outcomes to verify during RF implementation.
+
+# 32	Client grant lifecycle implementation (RF001)
+- ✅ 2026-11-24 Program 0.4.2-0 scopes local tickets and pinned selections to a single authenticated terminal Attachment. Each fresh opening creates an independent owner. Reattach cannot inherit consent. Local approval, one-time admission and checks at use are separate transitions. Cancellation removes the proposal or grant in any phase.
+- Unit scenarios cover local permission state and pinned object identity. Trusted prompt/input isolation, cancellation on the wire and actual mount teardown remain implementation work in RF003–RF004.
+
+# 33	Session-local command implementation (RF002)
+- ✅ 2026-11-24 Program 0.4.3-0 adds `stpt session attachments|read|create|mount`. Linux binds callers through the inherited Session socket and kernel UID/session checks. Windows binds callers through kernel pipe-client identity and membership in the owned Session Job. The public Session ID alone grants no authority.
+- ✅ 2026-11-24 The local Server pins one Attachment and its authenticated Connection under the registry lock and revalidates only that tuple. A selected Client that lacks capability 2 produces a local refusal. No reverse wire delivery or mount is implemented at this milestone.
+
+# 34  Trusted local terminal and one-shot file access (RF003)
+
+- ✅ 2026-11-24 The user chose a second local terminal for confirmation so a headless Client can participate. The user starts `stpt consent` and explicitly pairs the connecting Client. The prompt shows verified identity and Attachment context. The user chooses an absolute path and confirms the pinned selection with a fresh per-request answer.
+- ✅ 2026-11-24 Version 0.4.4-0 implements capability 2 with one slot per Connection. The Server owns START and the Client owns admission and publication. A lost final create result after END can leave an unknown outcome. A new attempt requires fresh selection and consent.
+
+# 35  Linux read-only mount implementation (RF004)
+
+- ✅ 2026-11-24 The Linux implementation serves a read-only FUSE filesystem in a Session-private mount namespace. Existing one-shot create consent remains independent. Mounts permit regular-file reads, metadata and bounded directory enumeration.
+- ✅ 2026-11-24 The second local terminal keeps the mount approval active until explicit revocation or binding loss. The Server owns the installed mount after handoff. Before handoff it requires a working FUSE worker and a pinned kernel abort handle so busy descriptors and working directories cannot prolong access.

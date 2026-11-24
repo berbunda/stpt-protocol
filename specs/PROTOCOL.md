@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-49 (2026-11-22). Changes: see Document history.
+Specification version: draft-58 (2026-11-24). Changes: see Document history.
 
 # 0	Conventions
 
@@ -337,7 +337,7 @@ capabilities = { * uint => any }   ; capability id => parameters
 - A capability is in effect for the whole Connection only if the Server selected it.
 - Capability ids: 0 is reserved; 0x00000001–0xEFFFFFFF are assigned by this specification; 0xF0000000 and above are for private and experimental use.
 
-Assigned capabilities: 1 — `file-transfer` (§16.2).
+Assigned capabilities: 1 — `file-transfer` (§16.2), 2 — `client-file-access` (§17.5), 3 — `client-directory-mount` (§17.8).
 
 ## 11.3	Message types
 | Range | Use |
@@ -369,7 +369,7 @@ Assigned core types:
 
 Assigned capability message types (capability 1): 0x4000 — FILES_READY (§16.2); 0x4001 — FILE_REQUEST, 0x4002 — FILE_RESULT, 0x4003 — FILE_ENTRIES, 0x4004 — FILE_ACCEPTED (§16.5); 0x4005 — FILE_DATA, 0x4006 — FILE_END, 0x4007 — FILE_RECEIVED (§16.10).
 
-There are no error or close messages: errors use QUIC mechanisms (§13.1).
+Capability 2 assigns 0x4010–0x4017 to the kind-3 exchange (§17.5–§17.7). Capability 3 assigns 0x4018–0x401A to directory mounts (§17.8–§17.10). There are no Connection error or close messages: errors use QUIC mechanisms (§13.1).
 
 ## 11.4	Extension rules
 - A capability defines its id, parameters, messages, fields and channel kinds. An Endpoint MUST NOT send any of them unless the capability is in effect.
@@ -492,6 +492,7 @@ Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above ar
 | progress of a stalled terminal stream | 10 s | Server ends the Attachment with TIMEOUT (§15.9) |
 | FILES_READY received after CHANNEL_OPEN | 10 s | Client aborts only the file Channel with TIMEOUT (§16.2) |
 | progress of a file operation | 60 s | Endpoint aborts only the file Channel with TIMEOUT (§16.13) |
+| Client file access: opening / consent / start / transfer progress | 10 / 60 / 10 / 60 s | Abort only the affected Channel (§17.7) |
 
 - Defaults are RECOMMENDED; a Server MAY configure other values.
 - A Client SHOULD send QUIC PING frames when the Connection has been idle for 15 s, so an idle terminal keeps its Connection. Session survival does not depend on this (§3.4).
@@ -509,6 +510,7 @@ limits = {
 - Terminal parameters and environment: §14.6.
 - Outstanding requests per Connection: §8.4. Sessions per Account: §15.8. Attachments per Session: §15.9.
 - File Channels, open resources, staging and transfer sizes: §16.2, §16.9–§16.10, §16.13 and §16.16.
+- Server-opened client-file-access Channels and pending prompts: §17.5–§17.7.
 - Failed authentication attempts per Connection: default 6; a Server MAY use a lower value.
 - A violated limit is answered with LIMIT_EXCEEDED.
 
@@ -525,8 +527,9 @@ limits = {
 | 0 | reserved | |
 | 1 | terminal | §14 |
 | 2 | files (capability 1) | §16 |
+| 3 | client-file-access (capability 2) | §17 |
 
-Other kinds are assigned by later sections (file transfer, client file access, port forwarding). Control is not a channel kind: it is stream 0 (§8.1).
+Control uses stream 0 (§8.1). Future services may assign additional kinds.
 
 ## 14.2	Purpose and modes
 - A terminal Channel is the Attachment of a Connection to a Session (§3.3): opening it attaches, closing it detaches.
@@ -1303,6 +1306,138 @@ file-metadata = {
 - The Server creates private upload staging under the Account's authority (§16.8). Publication MUST keep the uploaded object private to the Account under ordinary filesystem access. On POSIX the initial requested file mode is at most `0600`, with no executable or special bits. On Windows the Server MUST use an access descriptor and publication procedure that keep the object private to the Account under ordinary access, subject to system administration. If the platform or filesystem cannot provide this guarantee, the Server returns UNSUPPORTED.
 - With `replace=true` a successful upload installs the new object's ownership, access controls and timestamps. It does not copy the old destination's metadata or broaden access through an inherited or retained ACL. `mkdir` uses native creation defaults under Account permissions and Server policy. `rename` moves an existing object with native rename metadata semantics. None of these operations accepts metadata overrides.
 
+# 17	Client file access permissions (PF001, draft)
+
+Implementation status: program 0.4.2-0 implements the internal Client grant lifecycle (RF001). Program 0.4.3-0 adds the Session-local command, protected origin and Attachment selection (RF002). Program 0.4.4-0 implements the Server-opened read/create exchange with explicit confirmation in a second local Client terminal (RF003). Program 0.4.5-0 implements the PF004 read-only mount on Linux with separate local consent and independent revocation (RF004).
+
+## 17.1	Authority and consent
+
+The Client is the enforcement point for access to its files. By default it MUST deny all Server-initiated file access, including discovery of names, existence and metadata. Authentication, capability negotiation, terminal input, opening a Channel and a previous §16 transfer MUST NOT confer permission. A Server request is a proposal only. The Client MUST refuse a request unless it can identify a single live local Attachment to a Running Session on the requesting authenticated Connection.
+
+The Client MUST obtain explicit local user consent before issuing a grant. Its trusted local interface MUST identify the verified Server Identity, Account, Session and Attachment, the locally selected object, permitted operations and duration. It MUST distinguish remote suggestions from local selections and prevent remote output or terminal input forwarded to the Session from supplying or impersonating approval. Missing local interaction, dismissal and timeout MUST result in denial. Before granting access the Client MUST NOT probe a remote-suggested local path on the Server's behalf or disclose local path details in refusal responses.
+
+The user authorizes disclosure or changes at the request of the Server. The Client cannot verify which remote process originated a request or keep disclosed data from the Server administrator. For directory mounts the Client MUST warn that Server root can read the exposed files and require an explicit local yes.
+
+## 17.2	Scope and enforcement
+
+A grant is private Client state bound to the verified Server Identity, authenticated Account, live Connection and exact Session and Attachment IDs. A reference to a grant MUST NOT serve as bearer authority. Each other Attachment, including one on another device belonging to the same Account, requires its own local consent. Requests MUST NOT be broadcast to find a willing Client.
+
+The Client MUST bind a grant to a locally selected regular file, a new entry at an exact name in a selected parent, or an explicitly selected directory with stated descendant scope. It MUST grant only the operations shown to the user. Reading file contents, inspecting metadata, listing names, creating, modifying or replacing, deleting and renaming entries are separate rights. The local interface MAY offer clearly enumerated groups. A rename MUST cover both endpoints and any replacement. Expanding scope, rights or duration requires fresh consent. A one-operation approval MUST be consumed when the operation is admitted, including on failure, and MUST NOT authorize a retry. Repeated operations require an explicitly approved continuing grant.
+
+For every operation the Client MUST check the live grant, scope, requested effects and applicable local policy, and act with the local user's filesystem authority. It MUST bind access to the approved object or parent and constrain descendant resolution during the actual operation. Path substitution, symlinks, reparse points, mount crossings and aliases MUST NOT redirect access beyond the approved scope. If the Client cannot enforce confinement or safely publish an approved change it MUST refuse. The Server needs only a grant-relative name or reference. The Client MUST NOT send local absolute paths as an incidental part of granting access.
+
+## 17.3	Revocation and lifecycle
+
+The Client MUST provide local revocation for continuing grants. Revocation, expiry, detach (including takeover), Session exit or termination, and detected Connection loss invalidate the affected grants and pending approvals. The Client MUST serialize invalidation with operation admission and publication. Once it observes invalidation it MUST refuse new work, stop further reads and sends, cancel outstanding work and discard unpublished changes. Data already sent and changes already committed cannot be recalled. Losing a grant MUST NOT terminate the terminal Session or affect another Attachment's grants.
+
+Migration of the same authenticated Connection preserves the binding. Reconnect, automatic reattach, a fresh Attachment and Client restart MUST NOT restore it. Mounts MUST end when their grant ends.
+
+## 17.4	Requests originating in a Session (PF002, draft)
+
+A program running inside a Session submits its intended operation and an optional exact Attachment ID to a Server-local interface. The Server MUST establish the originating Running Session and its owner Account from a protected local context established for that Session. Possession of STPT_SESSION (§15.4), a claimed process ID, or an Account name alone is insufficient. A caller MUST NOT select another Session by supplying its ID. The Server MUST refuse calls for which it cannot establish the context. Local IPC and command syntax are implementation choices.
+
+The local interface MUST let the caller discover the current Attachment IDs for its own Session and supply one as the target. A listing is a snapshot. In one selection step the Server consults the current Attachment registry for that Running Session:
+
+| Caller selection | Server action |
+|---|---|
+| Explicit ID | Select only that live Attachment in this Session. An unknown or detached ID fails locally. |
+| No ID, exactly one live Attachment | Select that Attachment. |
+| No ID, several live Attachments | Return an ambiguous-target failure locally. The caller can list IDs and submit a new request with one ID. |
+| No ID, no live Attachment | Return a no-target failure locally. |
+
+Count all live Attachments before checking capability, terminal read-only mode or availability of a local confirmation interface. The Server MUST NOT infer which device supplied a shell command from keystrokes, most recent activity or attach order. Terminal read-only mode (§15.9) alone neither authorizes nor prevents a separate local file decision.
+
+On selection, pin the tuple (authenticated Connection, owner Account, Session ID, Attachment ID) for this attempt. The Server MUST check its policy, confirm that the Connection negotiated the client-file-access service and revalidate the live binding before dispatch. Selection and pinning MUST use the same registry snapshot. A later join does not make an already selected target ambiguous. Revalidation tests that exact tuple, never the current count or an ID in another Session. Failure ends the attempt for the local caller. The Server MUST NOT queue it for a future attach, choose a fallback or notify other Clients. Capability 1 (§16) does not enable this service.
+
+Deliver the proposal once, as the opening request of a dedicated Server-initiated bidirectional Channel (§8.3, PF003) on the selected Connection. The opening request MUST identify the exact Session and Attachment and describe the requested operation. Its stream correlates the Client response and subsequent exchange with the originating local call. No request is encoded in terminal output, replayed on attach or sent as a reverse §8.4 control request. PF003 defines negotiation, opening fields, responses and deadlines.
+
+Before prompting and again before granting access, the Client MUST match both IDs to its own live Attachment on this authenticated Connection and apply §17.1–§17.3. A stale or mismatched target MUST be refused without prompting. The Server MUST cancel pending delivery or approval when the caller abandons the request, its deadline expires or the binding ends. The Client MUST dismiss a pending prompt on observed cancellation. Both endpoints MUST discard late approval for a cancelled attempt. Pending calls and prompts MUST be bounded and MUST NOT block terminal I/O. Report refusal, cancellation or loss to the originating caller. Delivery or consent alone MUST NOT be reported as operation success. A lost result after a modifying operation may have committed MUST be reported as an unknown outcome and MUST NOT trigger automatic retry.
+
+## 17.5	Negotiation and opening (PF003, draft)
+
+Capability 2 is optional and independent of capability 1. Offer and selection both use `{0 => 1, 1 => 1..65535, * int => any}` (profile, maximum concurrent kind-3 Channels per Connection). The Client offers it only when locally enabled. The Server may omit it or select profile 1 and a maximum no greater than offered. Ignore unsupported or malformed offers. An invalid selection is PROTOCOL_VIOLATION. The RECOMMENDED offered maximum is one. After authentication an enabled Client supplies QUIC credit for Server-initiated bidirectional streams (§8.2). Credit alone grants no permission. Both endpoints MUST count opening, prompting and active Channels toward the selected limit until completion or abort, independently of transport credit.
+
+Only the authenticated Server on the Connection selected under §17.4 opens kind 3, once per proposal. The following frames use §7 framing and §7.3 unknown-key handling. Numeric message types are shown in wire order within each frame:
+
+```
+client-access-open = [3, {0 => 3, 1 => session-id, 2 => attachment-id,
+                          3 => uint, ? 4 => file-size, * int => any}]
+access-pending = [0x4010, {* int => any}]
+access-approved = [0x4011, {* int => any}]
+access-start = [0x4012, {* int => any}]
+access-ready = [0x4013, {0 => file-size, * int => any}]
+access-data = [0x4014, {0 => file-size, 1 => bstr .size (1..61440), * int => any}]
+access-end = [0x4015, {0 => file-size, 1 => bstr .size 32, * int => any}]
+access-result = [0x4016, {0 => uint, * int => any}]
+access-denied = [0x4017, {* int => any}]
+```
+
+Open key 3 identifies the requested action: 1 reads one locally selected regular file, 2 creates one new locally selected regular-file destination. Only action 2 carries key 4, the exact proposed byte count. Neither action carries a pathname, overwrites an entry or grants directory access. Reject all other action IDs without prompting unless an extension selected on this Connection defines the action (§17.8). Additional rights or mount operations require a negotiated extension (PF004). Optional fields ignored under §7.3 MUST NOT expand authority.
+
+## 17.6	Consent and transfer
+
+1. The Client checks grammar, selected service, binding, local policy and prompt capacity before presenting anything. Refuse an unsupported action, stale target, disabled interface or policy failure using §8.3 CHANNEL_REJECTED. Abort excess Channels with LIMIT_EXCEEDED. A valid admitted proposal receives exactly one Client ACCESS_PENDING. This acknowledges admission only.
+2. Use a trusted local interaction isolated from remote terminal rendering and input. Show the §17.1 context and direction in local terms (send one file to the Server, or save a new file of the stated size). The user selects the exact local object and explicitly approves that selection for one operation. No default affirmative action, forwarded keystroke, pasted remote output or terminal replay may approve. Serialize or independently identify simultaneous prompts. If isolation is unavailable, refuse. Denial, dismissal or inability to obtain consent after PENDING sends ACCESS_DENIED then Client FIN. The Server ends its send direction with FIN and reports refusal. The refusal contains no local diagnostic or filename.
+3. Bind consent to the selected object (or selected parent and exact new name) at confirmation. Retain a safe reference or verify identity at actual use; a replacement object at the same pathname requires fresh consent. After rechecking the binding, approval sends ACCESS_APPROVED once. The Server checks that its caller, deadline and pinned target are still live before sending ACCESS_START. Before START the Client MUST NOT disclose file information or bytes, create the destination or consume the approval for another operation. On receiving START it rechecks the binding and grant, atomically admits this one operation (§17.2), and either sends a nonzero ACCESS_RESULT then FIN, or sends ACCESS_READY. READY declares the opened source length for read or echoes the proposed length for create. A different echoed length violates the protocol. Approval alone never means that the operation completed.
+4. After READY, the data sender (Client for read, Server for create) sends zero or more ACCESS_DATA frames then ACCESS_END and FIN. Key 0 in DATA is the contiguous offset starting at zero. END gives the total count and raw BLAKE3 digest of all bytes, including the empty sequence. The receiver enforces the declared size, local limits, bounded buffering and full count/digest verification (§16.10–§16.13). A local sender failure aborts the stream. The Client stages a create privately and publishes only verified bytes, with atomic no-replace under current local authority. A read grant covers only the selected opened source.
+5. After END the receiver sends ACCESS_RESULT then FIN. Status uses §16.7 (0 success, unknown nonzero means failure). Success requires verified receipt and successful local completion, including publication for create. For read the Server returns success to its caller only after its own verified local delivery. For create the Server requires the Client's complete success result. A receiver that must stop before END aborts the Channel. For a pre-READY failure in step 3 the Server replies with FIN. No stream reuse, resume or automatic retry is permitted.
+
+For actions 1 and 2, an incorrectly typed or missing required field, key 4 on a read, a DATA offset gap or overlap, or DATA beyond the declared length violates the protocol. A well-formed END whose count or digest fails verification yields ACCESS_RESULT(INTEGRITY_ERROR) without publication. The digest covers the logical file bytes in order. For an empty file the sender sends END with count zero and the BLAKE3 digest of the empty sequence. A local failure reported with a stream abort uses INTERNAL_ERROR unless a more specific §13.2 code applies.
+
+Example, creating an empty file: Server OPEN(action 2, size 0), Client PENDING then APPROVED, Server START, Client READY(0), Server END(0, empty digest) then FIN, Client RESULT(OK) then FIN. If another process creates the destination before publication the Client instead returns RESULT(ALREADY_EXISTS) and preserves that entry.
+
+## 17.7	Cancellation, races and limits
+
+An abort sends RESET_STREAM and STOP_SENDING on directions still open. Either side may cancel at any phase using NO_ERROR. Caller abandonment during a one-shot operation or mount setup, revocation or loss of the target binding requires cancellation. After mount handoff the setup caller no longer owns the operation (§17.8). Dismiss the prompt, release its approval and discard unpublished staging on observed abort or Connection loss. The Client MUST serialize a local cancellation with admission and publication (§17.3). A Server that cancels before sending START can report that no operation started. After sending START it MUST report an unknown modifying outcome if it lacks a definitive result and cannot rule out publication. Cancellation cannot undo an earlier commit. Serialize local cancellation with authorization to send START and with delivery of a final result to the caller. If cancellation wins, never send a new START or deliver a later success. If a definitive result was delivered first, a later abort does not change it. Ignore frames crossing a local cancellation on that stream, including late approval. After sending END and FIN an Endpoint MUST still monitor the peer direction for a result or abort; FIN alone does not cancel completed input. A FIN without the required preceding terminal frame ends an incomplete exchange as a Channel-local interruption, never success.
+
+Use bounded monotonic timers on both endpoints. The Server opening deadline covers obtaining stream credit, sending OPEN and receiving PENDING. Client receipt of an incomplete opening frame is bounded from the first stream data. Consent time runs from sending PENDING at the Client and receiving it at the Server until approval or denial. On approval the Client starts its START deadline. The Server starts a no-progress deadline when sending START, and both endpoints enforce it during transfer and while waiting for the final result or peer FIN. Only progress in the awaited exchange counts. The RECOMMENDED defaults are in §13.3. A shorter caller deadline takes precedence. Expiry aborts only this Channel with TIMEOUT (or fails locally before stream allocation) and invalidates pending approval. Repeated frames, PINGs and prompt activity MUST NOT extend an opening, consent or START deadline.
+
+The Client also bounds sending PENDING from receipt of OPEN by its opening deadline. While flushing a terminal response or awaiting the closing FIN, either endpoint applies the transfer no-progress deadline, including after denial or pre-READY failure.
+
+Bound pending calls, prompts, staged bytes and active transfers locally, including across Connections. Continue servicing cancellation, deadlines and unrelated Channels during confirmation and I/O. Malformed frames, wrong initiator, unnegotiated use, wrong-direction or out-of-phase messages on a live exchange are PROTOCOL_VIOLATION (§0.2). A denial, native I/O failure, digest mismatch or expired grant is an ordinary Channel outcome and MUST NOT close the Connection.
+
+## 17.8	Read-only directory mount (PF004, draft)
+
+Capability 3 extends capability 2 on the same kind-3 Channel. Its offer and selection value is the unsigned integer 1 (read-only mount profile). The Client MUST offer it only alongside capability 2. The Server MUST ignore an unsupported or malformed offer and select it only together with capability 2 and a usable local mount backend. An invalid selection is PROTOCOL_VIOLATION. Each mount occupies one negotiated kind-3 slot for its entire lifetime.
+
+The Server routes the request under §17.4 and opens action 3, omitting key 4. Without capability 3 the Client rejects this action without a prompt. For this action the local caller remains the owner of the request through setup. After successful installation the Session owns the mounted view subject to the original Attachment binding; normal exit of the setup command does not end it. A setup failure or abandonment before handoff aborts the Channel and removes any partial mount.
+
+Use PENDING, APPROVED, DENIED and START with the directions and deadlines of §17.6–§17.7. Instead of one-shot approval, the Client requires the user to select one local directory in the trusted local interface and explicitly enter or select **yes**. Show the exact local directory, Server Identity, Account, Session, Attachment, and that the Server may repeatedly list names, inspect metadata and read regular files throughout the selected subtree until access ends. Explicitly warn that Server root can read and retain copies of those files. Explain that other Attachments of this Session can drive processes that read the mounted view. They cannot inherit or renew the grant. Show how to revoke the mount locally. Decline, dismissal, unavailable trusted UI or expiry grants no access. No saved confirmation, remote terminal input or approval for a previous mount satisfies this request.
+
+Bind the directory identity at confirmation as in §17.6. On START, revalidate the grant and pin that same directory under the local user's authority; refuse if its identity cannot be established safely. Reply with a nonzero ACCESS_RESULT and FIN on setup failure, or MOUNT_READY on success. The latter starts the continuing grant. The Server serializes exposure and handoff with caller abandonment and binding invalidation. Revalidate the live binding in that transition. If invalidation wins, discard even a concurrently received MOUNT_READY, abort and dismantle any provisional backend without exposing it. If handoff wins, later binding loss revokes the installed view. It reports success to the local caller only when the backend is serving at a Server-selected mountpoint and returns that mountpoint locally. The mountpoint MUST be fresh, protected against substitution and private to the intended Session. The Server MUST refuse installation unless it can isolate the view from unrelated Sessions and ordinary Accounts, enforce read-only, no execution, no device or set-ID semantics, and tear down access independently of busy filesystem handles. Server administrators and processes inside the authorized Session remain within the exposure described by the prompt.
+
+## 17.9	Mounted filesystem operations
+
+```
+mount-ready = [0x4018, {0 => 0..1, * int => any}]   ; name kind: POSIX or Windows (§16.18)
+mount-call = [0x4019, {0 => uint, ? 1 => [* (bstr / tstr)], ? 2 => uint,
+                       ? 3 => file-size, ? 4 => 1..61440, * int => any}]
+mount-reply = [0x401A, {0 => uint, ? 1 => file-metadata, ? 2 => [* file-entry],
+                        ? 3 => uint, ? 4 => bstr .size (0..61440), * int => any}]
+```
+
+After READY, only the Server sends CALL and only the Client sends REPLY, one outstanding call per stream, exactly one reply per call unless aborted. CALL key 0 selects the operation. REPLY key 0 is a §16.7 status. On failure omit all defined payload fields. On success use exactly the fields below. No request ID is needed. A second outstanding call, wrong phase, missing required or inapplicable defined field is PROTOCOL_VIOLATION. An unknown operation receives UNSUPPORTED.
+
+| CALL operation | Required CALL fields | Successful REPLY |
+|---|---|---|
+| 1 stat | 1 relative path | 1 metadata (§16.19) |
+| 2 list | 1 relative path | 2 complete array of immediate entries, omitting dot entries |
+| 3 open regular file | 1 relative path | 3 fresh mount-local handle bound to the opened object |
+| 4 read | 2 handle, 3 byte offset, 4 maximum bytes | 4 bytes at that offset, at most the requested count, empty at EOF |
+| 5 close | 2 handle | No payload. Release the handle before replying. |
+
+Paths start at the pinned directory. The empty array denotes the root. Every component uses the name kind in READY and the component rules in §16.18. No absolute path, drive prefix, parent step or platform translation may escape the root. Check authority and confinement at actual use (§17.2), including reads on held handles. If a moved object cannot still be verified as authorized, refuse further access. Never follow symlinks, reparse points or nested mounts or open special files. Stat and list may describe such entries without traversal or link-target disclosure. Enforce native naming without lossy conversion or collisions on the Server. If a name cannot be represented, fail the affected lookup or listing. All mutations and unsupported filesystem operations fail locally at the Server.
+
+A listing need not be a snapshot across calls. Return LIMIT_EXCEEDED if a complete listing cannot fit one bounded reply. Never truncate it into apparent success. Bound enumeration memory, active mounts, handles and queued backend calls. Handles are scoped to this live Channel and never reused there. Unknown or closed handles receive NOT_FOUND. Concurrent native operations may queue within a bounded limit; no head-of-line wait on a mount may block terminal or control traffic. Reads observe the current opened file and provide no whole-file snapshot guarantee.
+
+## 17.10	Revocation and unmount
+
+Either endpoint may unmount at any time using the §17.7 stream abort with NO_ERROR. The Client MUST offer local revocation throughout. Each endpoint independently invalidates its side on explicit unmount, end of the bound Attachment (including takeover), Session exit or termination, detected Connection loss, Channel closure or local backend failure. The Server MUST initiate teardown when it observes such an event without waiting for the Client, and vice versa. Losing an unrelated Attachment does not end the mount. Migration on the same Connection preserves it. Reattach, reconnect and process restart require a fresh mount and consent.
+
+Serialize invalidation with request admission and result delivery. Stop admitting work immediately on observed invalidation, fail pending filesystem requests and discard late replies. Both sides MUST recheck their local live mount state before handing a read or listing result to the transport or filesystem caller, including after asynchronous I/O. An invalidated instance MUST NOT accept callbacks or replies for a later mount at the same pathname. The Client releases all pinned objects even if CLOSE never arrives. The Server disables the backend, disconnects the filesystem and removes the mountpoint it owns once the OS permits. Open descriptors, cached pages, directory entries and busy working directories MUST NOT keep serving the revoked view. Disable caching, mappings or backend features where necessary to enforce this boundary. If native unmount is delayed, the view MUST already be inaccessible. Server shutdown or helper death must leave a disconnected view and release grants on detected stream loss. Previously read bytes, including copies in remote process memory, cannot be recalled.
+
+Opening and consent use §17.7. While installing the mount or awaiting an operation reply, enforce the §13.3 no-progress deadline (recommended 60 s); abort this mount with TIMEOUT on expiry. Apply the progress deadline at both endpoints while servicing a CALL, including a partial request or reply and a blocked send. A healthy idle mount has no outstanding operation or partial frame and may remain idle. On a silent network partition, loss is observed through the QUIC idle timeout or an earlier outstanding-call deadline. No offline cache, background reconnect or automatic remount is permitted.
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
@@ -1406,3 +1541,12 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-48 (2026-11-22): records the completed Windows/Linux Tier RE scenario review and implementation fixes for active FIN/deadlines, verified Client publication and private checkpoint files. No normative wire changes.
 
 - draft-49 (2026-11-22): records the Windows-only 0.4.1-2 follow-up that creates Client resume state with atomic private descriptors and explicit owner; distinguishes final Windows validation from unchanged Linux 0.4.1-1 evidence. No normative wire changes.
+- draft-50 (2026-11-24): defines Client consent, grant scope, enforcement and revocation for PF001 (§17). No wire allocations.
+- draft-51 (2026-11-24): defines Session-local request origin, deterministic Attachment selection and delivery to one Client (§17.4, PF002).
+- draft-52 (2026-11-24): assigns capability 2 and kind 3, with one-shot Client consent, verified read/create, refusal, cancellation and deadlines (§17.5–§17.7).
+- draft-53 (2026-11-24): adds the explicitly approved read-only directory mount extension, scoped operations and independent teardown (§17.8–§17.10, PF004).
+- draft-54 (2026-11-24): Tier PF scenario review clarifies target pinning, consent identity, cancellation and mount handoff/revocation (§17). Wire allocations are unchanged.
+- draft-55 (2026-11-24): records RF001 Client permission state implementation. No wire changes.
+- draft-58 (2026-11-24): records the Linux implementation of PF004 in 0.4.5-0. No wire changes.
+- draft-57 (2026-11-24): records the RF003 one-shot implementation and trusted local terminal in 0.4.4-0. Wire assignments are unchanged.
+- draft-56 (2026-11-24): records the RF002 Session-local command and target selection in 0.4.3-0. No wire changes.

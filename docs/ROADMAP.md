@@ -41,10 +41,12 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 - [x] PE005  file metadata and paths across platforms ➕ 2026-10-13 ✅ 2026-11-17
 
 # 6	Tier PF — Client-side File Access
-- [ ] PF001  trust model and permission grants ➕ 2026-10-13
-- [ ] PF002  requests from inside a Session to the Client ➕ 2026-10-13
-- [ ] PF003  Server-opened Channel for client file access ➕ 2026-10-13
-- [ ] PF004  client directory mount: explicit consent, unmount on detach or Session end ➕ 2026-10-13
+- [x] PF001  trust model and permission grants ➕ 2026-10-13 ✅ 2026-11-24
+- [x] PF002  requests from inside a Session to the Client ➕ 2026-10-13 ✅ 2026-11-24
+- [x] PF003  Server-opened Channel for client file access ➕ 2026-10-13 ✅ 2026-11-24
+- [x] PF004  client directory mount: explicit consent, unmount on detach or Session end ➕ 2026-10-13 ✅ 2026-11-24
+
+Tier PF scenario review completed ✅ 2026-11-24 in draft-54. See [scenarios and outcomes](PF_REVIEW.md).
 
 # 7	Tier PG — Port Forwarding
 - [ ] PG001  local forwarding; binding to Connection or Session ➕ 2026-10-13
