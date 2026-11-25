@@ -317,3 +317,26 @@ Start with a narrow MVP verifiable on a local VM.
 
 - ✅ 2026-11-24 The Linux implementation serves a read-only FUSE filesystem in a Session-private mount namespace. Existing one-shot create consent remains independent. Mounts permit regular-file reads, metadata and bounded directory enumeration.
 - ✅ 2026-11-24 The second local terminal keeps the mount approval active until explicit revocation or binding loss. The Server owns the installed mount after handoff. Before handoff it requires a working FUSE worker and a pinned kernel abort handle so busy descriptors and working directories cannot prolong access.
+
+
+# 36 TCP forwarding (PG001–PG004)
+
+- ✅ 2026-11-25 Profile 1 binds rules and TCP flows to one authenticated Connection, independently of Sessions. Migration preserves them; reconnect creates new rules and never resumes TCP. A surviving Session cannot keep a Client-dependent socket alive. Session-persistent listeners would require a separate ownership/rebinding design and are outside this profile.
+- ✅ 2026-11-25 Capability 4 selects modes and aggregate maxima. Kind 4 holds one rule, identified by its Connection-local QUIC stream ID; kind 5 carries one TCP flow. Separate framed DATA and QUIC FIN preserve backpressure and half-close. Rule cancellation aborts its sockets and pending DNS/connect work without affecting other rules or Sessions.
+- ✅ 2026-11-25 Local mode pins a Server-side target; remote mode binds a Server listener to one locally configured Client target. The Server cannot name or replace that target. Dynamic mode is a restricted SOCKS5 CONNECT proxy with Server-side DNS, explicit exposure controls and no claim of full RFC 1928 conformance. UDP remains PG005, on request.
+- ✅ 2026-11-25 Forwarding defaults to disabled under administrator policy. Each rule/flow intersects Account and Authentication Context permissions, with numeric candidate checks against DNS rebinding, explicit wildcard/ephemeral-port authorization and Account-level OS authority. Remote mode delegates its destination to the Client, so administrators may disable it entirely. Target services need their own authentication; STPT protects only the tunnel segment.
+- ✅ 2026-11-25 Reviewed negotiation, cross-stream READY races, cancellation, half-close, DNS, listener exposure and resource exhaustion. [Acceptance scenarios](../docs/PG_REVIEW.md) describe required outcomes, not implementation test results. RG001–RG004 remain unimplemented; no program/platform gate has been resolved by this specification.
+
+
+# 37 TCP forwarding implementation (RG001–RG004)
+
+- ✅ 2026-11-25 Program 0.5.0-0 implements capability 4, kinds 4/5 and local/remote/dynamic TCP forwarding from §18. The foreground CLI runs one rule per command, prints the actual bind endpoint, has no automatic reconnect and creates no Session. UDP remains PG005/RG005 backlog.
+- ✅ 2026-11-25 Server configuration explicitly enables modes per Account, numerical target/bind networks and ports, optional exact DNS names and remote ingress. Client configuration pins every remote target; non-loopback listener exposure requires local opt-in, and exposed SOCKS additionally requires a source allowlist. Policies are read once; restart applies changes and closes existing Connections.
+- ✅ 2026-11-25 Unix DNS/bind/connect helpers execute the same image with Account groups/GID/UID and return authorized descriptors through private SCM_RIGHTS IPC. Missing executable permission fails closed. Windows retains the existing current canonical Account/process token boundary. No privileged fallback is provided.
+- ✅ 2026-11-25 Review covers early remote dispatch, stale/wrong-direction IDs, cancellation, truncated frames, TCP half-close, independent STOP_SENDING, native DNS policy and Account/global resource ownership. Pending blocking work and helper reap retain both native and flow/rule reservations. Program docs/RG_REVIEW.md distinguishes runtime tests from specification walkthrough and documents coverage limits. Draft-60 records implementation without changing the wire format.
+
+
+# 38 Tier RG full scenario review
+
+- ✅ 2026-11-25 Program 0.5.0-1 fixes cancelled early-flow target contact, retained Account budget identity, explicit opening TIMEOUT, cancellation of blocked replies and omitted foreground route monitoring. PG001–PG004 semantics and wire allocations remain unchanged.
+- ✅ 2026-11-25 All 41 scenarios were traced through native tests, authenticated Server cases, QUIC fault peers, controlled DNS/quotas and policy inspection. Both platforms exercise real default idle, partial opening, half-close and migration. Cross-platform transfers use end-to-end QUIC/TLS through a temporary SSH UDP relay because the direct UDP path did not answer. No network configuration was changed. [Evidence and limits](../docs/RG_REVIEW.md) distinguish controlled admission/resolution tests from native socket exhaustion or authoritative DNS attacks.

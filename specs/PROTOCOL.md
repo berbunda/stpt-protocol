@@ -1,7 +1,7 @@
 # STPT Protocol Specification
 
 Status: draft.
-Specification version: draft-58 (2026-11-24). Changes: see Document history.
+Specification version: draft-61 (2026-11-25). Changes: see Document history.
 
 # 0	Conventions
 
@@ -337,7 +337,7 @@ capabilities = { * uint => any }   ; capability id => parameters
 - A capability is in effect for the whole Connection only if the Server selected it.
 - Capability ids: 0 is reserved; 0x00000001–0xEFFFFFFF are assigned by this specification; 0xF0000000 and above are for private and experimental use.
 
-Assigned capabilities: 1 — `file-transfer` (§16.2), 2 — `client-file-access` (§17.5), 3 — `client-directory-mount` (§17.8).
+Assigned capabilities: 1 — `file-transfer` (§16.2), 2 — `client-file-access` (§17.5), 3 — `client-directory-mount` (§17.8), 4 — `tcp-forwarding` (§18.2).
 
 ## 11.3	Message types
 | Range | Use |
@@ -369,7 +369,7 @@ Assigned core types:
 
 Assigned capability message types (capability 1): 0x4000 — FILES_READY (§16.2); 0x4001 — FILE_REQUEST, 0x4002 — FILE_RESULT, 0x4003 — FILE_ENTRIES, 0x4004 — FILE_ACCEPTED (§16.5); 0x4005 — FILE_DATA, 0x4006 — FILE_END, 0x4007 — FILE_RECEIVED (§16.10).
 
-Capability 2 assigns 0x4010–0x4017 to the kind-3 exchange (§17.5–§17.7). Capability 3 assigns 0x4018–0x401A to directory mounts (§17.8–§17.10). There are no Connection error or close messages: errors use QUIC mechanisms (§13.1).
+Capability 2 assigns 0x4010–0x4017 to the kind-3 exchange (§17.5–§17.7). Capability 3 assigns 0x4018–0x401A to directory mounts (§17.8–§17.10). Capability 4 assigns 0x4020–0x4022 to TCP forwarding (§18.2). There are no Connection error or close messages: errors use QUIC mechanisms (§13.1).
 
 ## 11.4	Extension rules
 - A capability defines its id, parameters, messages, fields and channel kinds. An Endpoint MUST NOT send any of them unless the capability is in effect.
@@ -493,6 +493,7 @@ Unknown error codes are treated as INTERNAL_ERROR. Codes 0xF0000000 and above ar
 | FILES_READY received after CHANNEL_OPEN | 10 s | Client aborts only the file Channel with TIMEOUT (§16.2) |
 | progress of a file operation | 60 s | Endpoint aborts only the file Channel with TIMEOUT (§16.13) |
 | Client file access: opening / consent / start / transfer progress | 10 / 60 / 10 / 60 s | Abort only the affected Channel (§17.7) |
+| Forwarding opening / SOCKS handshake / blocked progress | 10 / 10 / 60 s | Abort the affected rule or flow (§18.7); healthy idle has no progress timer |
 
 - Defaults are RECOMMENDED; a Server MAY configure other values.
 - A Client SHOULD send QUIC PING frames when the Connection has been idle for 15 s, so an idle terminal keeps its Connection. Session survival does not depend on this (§3.4).
@@ -511,6 +512,7 @@ limits = {
 - Outstanding requests per Connection: §8.4. Sessions per Account: §15.8. Attachments per Session: §15.9.
 - File Channels, open resources, staging and transfer sizes: §16.2, §16.9–§16.10, §16.13 and §16.16.
 - Server-opened client-file-access Channels and pending prompts: §17.5–§17.7.
+- Forwarding rules, flows, pending sockets, DNS and buffered bytes: §18.2, §18.7.
 - Failed authentication attempts per Connection: default 6; a Server MAY use a lower value.
 - A violated limit is answered with LIMIT_EXCEEDED.
 
@@ -528,6 +530,8 @@ limits = {
 | 1 | terminal | §14 |
 | 2 | files (capability 1) | §16 |
 | 3 | client-file-access (capability 2) | §17 |
+| 4 | forward-rule (capability 4) | §18.4 |
+| 5 | forward-flow (capability 4) | §18.5 |
 
 Control uses stream 0 (§8.1). Future services may assign additional kinds.
 
@@ -1438,8 +1442,156 @@ Serialize invalidation with request admission and result delivery. Stop admittin
 
 Opening and consent use §17.7. While installing the mount or awaiting an operation reply, enforce the §13.3 no-progress deadline (recommended 60 s); abort this mount with TIMEOUT on expiry. Apply the progress deadline at both endpoints while servicing a CALL, including a partial request or reply and a blocked send. A healthy idle mount has no outstanding operation or partial frame and may remain idle. On a silent network partition, loss is observed through the QUIC idle timeout or an earlier outstanding-call deadline. No offline cache, background reconnect or automatic remount is permitted.
 
+# 18 Port forwarding (PG001–PG004, draft)
+
+## 18.1 Scope and lifetime
+Profile 1 defines TCP local, remote and dynamic forwarding. It is an optional draft extension, implemented by program 0.5.0-1 (RG001–RG004; full scenario review). The CLI currently opens one rule per foreground command/Connection; runtime limits and validation scope are recorded in the program architecture and RG_REVIEW.md. It uses neither shell commands nor a terminal Channel and requires no Session. UDP, Unix-domain sockets, SOCKS BIND and Session-persistent listeners are outside this profile. UDP remains PG005 in the backlog.
+
+A forwarding rule belongs to exactly one authenticated Connection and its Authentication Context. A kind-4 rule Channel holds its lifetime; each accepted TCP connection uses a separate kind-5 flow Channel on that Connection. Neither a rule nor an established TCP flow can move to another Connection. QUIC migration preserves both. Closing the Connection ends all rules, sockets and pending work, even if an unrelated Session survives. Terminal detach or Session exit alone does not end a rule. Reconnect requires new explicit local configuration and fresh authorization; it MUST NOT replay TCP bytes or resume an old flow. This Connection binding is the PG001 lifetime decision.
+
+The Client's trusted local configuration authorizes the direction, listener exposure and targets for each rule. Remote terminal output or a Server-opened flow MUST NOT create or widen that configuration. In particular, a remote rule authorizes exactly one Client-side destination, never an address chosen by the Server. Approval through a CLI configuration is sufficient; a per-flow prompt is not required.
+
+## 18.2 Negotiation and allocations
+Capability 4, `tcp-forwarding`, assigns Channel kinds 4 (`forward-rule`) and 5 (`forward-flow`), and messages 0x4020 FORWARD_READY, 0x4021 FORWARD_CONNECTED and 0x4022 FORWARD_DATA. They do not change the base wire version. No forwarding message is a control-Channel request.
+
+The Client offers:
+```
+tcp-forwarding-params = {
+  0 => 1,                       ; profile
+  1 => uint,                    ; simultaneous rules, 1..64
+  2 => uint,                    ; simultaneous flows, 1..1024
+  3 => [+ (1 / 2 / 3)],         ; distinct modes: local / remote / dynamic
+  * int => any,
+}
+```
+The Server selects the same profile, positive maxima no larger than the offer and a nonempty subset of the offered modes. Unsupported or malformed offers are not selected. A Client MUST treat a malformed selection, duplicate modes, an enlarged maximum or an unoffered mode as PROTOCOL_VIOLATION. RECOMMENDED selected maxima are 8 rules and 64 flows. These are aggregate per-Connection limits across all directions, including opening and teardown. When remote mode is selected, the Client MUST make server-initiated bidirectional stream credit available after authentication for authorized remote flows, subject to the shared Channel and resource limits (§8.2). Selection advertises protocol support, not Account authorization. The Server still checks each rule and flow after authentication.
+
+Use without capability 4, use before authentication, a Server-opened rule Channel or a rule mode not selected in HELLO is PROTOCOL_VIOLATION. Only the Client opens rule Channels. Local and dynamic flow Channels are Client-opened; remote flow Channels are Server-opened. Before permitting a remote rule the Client MUST provide server-initiated bidirectional stream credit (§8.2). Limits and scheduling MUST reserve capacity for control and other enabled services; an accepted TCP socket MUST NOT wait indefinitely for QUIC stream credit. No Server-opened flow is authorized merely by stream credit.
+
+## 18.3 Addresses
+```
+forward-ip = [1, bstr .size 4] / [2, bstr .size 16]
+forward-host = forward-ip / [3, tstr]
+forward-target = [forward-host, 1..65535]
+forward-bind = [forward-ip, 0..65535]
+forward-socket = [forward-ip, 1..65535]
+```
+IP byte strings use network byte order. Kind 3 is a DNS name: 1..253 ASCII bytes, lowercase labels of 1..63 characters, letters/digits with interior hyphens, separated by dots, no empty label or trailing dot. Unicode names require local conversion to ASCII A-labels before sending. Numeric addresses MUST use an IP form, not DNS text. IPv4-mapped IPv6 addresses MUST be normalized to IPv4 before sending and before policy comparison. A receiver MUST reject a noncanonical mapped representation as UNSUPPORTED without a network side effect. Scope identifiers, scoped IPv6 destinations, multicast and unspecified destinations are unsupported. DNS resolution is performed only by the Endpoint making the target TCP connection, subject to §18.8. There is no receiver-side shell, URL, service-name, search-suffix or proxy-environment interpretation.
+
+Bind addresses are numeric only; unspecified addresses mean an explicit wildcard request. Port 0 requests an OS-assigned port. A receiver MUST NOT silently widen an address, use another fixed port or substitute a wildcard for loopback. IPv6 listeners MUST be IPv6-only so they cannot accidentally expose IPv4. Opening IPv4 and IPv6 listeners requires separate rules. RECOMMENDED local and remote listener defaults are an explicit loopback address and a user-selected port. A Client MUST require explicit local configuration for any non-loopback listener, including a wildcard; the Server must additionally authorize every remote bind. A well-formed address outside this profile returns UNSUPPORTED rather than attempting a fallback.
+
+## 18.4 Rule creation and cancellation
+```
+forward-rule-open = [
+  type: CHANNEL_OPEN,
+  body: {
+    0 => 4,
+    1 => 1 / 2 / 3,             ; local / remote / dynamic
+    ? 2 => forward-target,      ; required only for local
+    ? 3 => forward-bind,        ; required only for remote
+    * int => any,
+  },
+]
+forward-ready = [
+  type: FORWARD_READY,          ; 0x4020; Server to Client, once
+  body: {
+    0 => uint,                 ; status (§18.7)
+    ? 1 => forward-socket,      ; required only for successful remote rule
+    * int => any,
+  },
+]
+```
+The rule ID is the QUIC stream ID of its kind-4 Channel (an unsigned integer at most 2^62-1). It is scoped to this Connection, is never reused and grants no authority on another Connection. It is implicit in FORWARD_READY; no secret token or persistent registry is needed. Missing required known fields or known fields forbidden for the mode are protocol violations; unknown keys follow §7.3.
+
+After authentication and negotiation, the Client sends CHANNEL_OPEN and waits for exactly one FORWARD_READY. Before acceptance the Server validates mode, Account policy, limits and parameters. For remote mode it binds/listens using the Account's permitted OS authority before sending success. FORWARD_READY reports the requested address and actual port; a nonzero requested port MUST match exactly; for wildcard listeners that address remains unspecified. The Client MUST validate the reply against its request and local configuration. Local and dynamic listeners are created/activated by the Client only after success, using locally configured addresses that are not sent on the wire. If local setup fails the Client cancels the rule. Local rules pin their target in field 2. Dynamic rules select a target per flow. A remote target remains solely in the Client's local rule object and is not sent to the Server.
+
+A remote Server MUST NOT open flows until it has sent successful FORWARD_READY. Streams are independently ordered: a remote flow can reach the Client before READY. The Client MUST bound any such wait by the rule-opening deadline, validate against its own pending remote rule, and MUST NOT connect a target or acknowledge that flow before validating successful READY. Refused or cancelled rules cannot dispatch waiting flows.
+
+For a valid, authorized kind, policy/bind/setup outcomes use FORWARD_READY. Non-success carries no field 1; the Server then sends FIN and the Client answers FIN without any further message. A failure creates no active rule. Generic admission refusal before this exchange MAY instead use CHANNEL_REJECTED or LIMIT_EXCEEDED (§8.3). After success neither Endpoint sends further messages on the rule stream. FIN, reset or STOP_SENDING in either direction revokes the entire rule; the other Endpoint closes its side without waiting for acknowledgement. FIN is cancellation, not TCP half-close, on this Channel.
+
+Revocation MUST first invalidate the rule locally, stop accepting and close its listener, abort all its pending/active flows and cancel DNS/connect tasks. Any late completion, READY or flow for an invalidated rule MUST be discarded and its socket closed. A queued callback MUST recheck the exact rule instance before connecting, accepting data or delivering bytes. Bytes already delivered cannot be recalled. A Server policy revocation uses a reset with CHANNEL_REJECTED; ordinary local cancellation MAY use FIN. Cancelled streams are no longer parsed for late application messages. Other rules, terminal Channels and Sessions remain unaffected.
+
+## 18.5 Flow establishment
+```
+forward-flow-open = [
+  type: CHANNEL_OPEN,
+  body: {
+    0 => 5,
+    1 => 0..4611686018427387903, ; rule stream ID
+    ? 2 => forward-target,      ; required only for dynamic
+    * int => any,
+  },
+]
+forward-connected = [
+  type: FORWARD_CONNECTED,      ; 0x4021; flow receiver to opener, once
+  body: {
+    0 => uint,                 ; status (§18.7)
+    ? 1 => forward-socket,      ; required on success: target socket local endpoint
+    * int => any,
+  },
+]
+```
+A listener accepts a TCP socket and opens one kind-5 Channel. For local/dynamic mode the Server connects the fixed/per-flow target. For remote mode the Client looks up the locally configured target for this exact rule and connects it; field 2 is forbidden, preventing Server-directed access to arbitrary Client services. No origin address supplied by the peer is trusted as authorization. Each flow requires an active rule on the same Connection, the correct opener direction, available limits and a fresh policy check. A well-formed flow with an unknown, cancelled, refused or wrong-mode rule is rejected with CHANNEL_REJECTED and causes no DNS lookup or target connection. Malformed fields remain protocol violations. The Client MUST reject unsolicited Server-opened flows without contacting a local target. A receiver MUST validate the rule and opener direction before initiating DNS, target connection or any other network side effect.
+
+The receiver sends FORWARD_CONNECTED success only after the target TCP connection succeeds and it revalidates the rule. Field 1 reports getsockname of that target-side socket, a numeric address and actual port, not the destination's address and not the listener's address. On failure it omits field 1, sends FIN and accepts the opener's FIN; no application data is relayed. Before READY/CONNECTED, bounded local buffering is allowed but neither Endpoint may send FORWARD_DATA on the flow until success has been sent (receiver) or received (opener). A reset by the opener while connect is pending cancels that attempt. A timeout or cancellation after connect may mean a target observed a connection; it MUST NOT trigger an automatic retry.
+
+Every newly accepted TCP connection requires a new Channel and independent target TCP connection. Target connections MUST NOT be pooled across flows. A flow has no terminal, Session, file permission or authority beyond its one target. A stale flow never falls back to another rule, Client, Attachment or Connection.
+
+## 18.6 Data, half-close and failure
+```
+forward-data = [
+  type: FORWARD_DATA,           ; 0x4022; either direction after success
+  body: { 0 => bstr .size (1..61440), * int => any },
+]
+```
+Each flow uses exactly one bidirectional QUIC stream with the existing length-prefixed CBOR framing (§7); bytes MUST NOT be sent unframed. Senders additionally respect the peer's maximum message size. Each direction's DATA byte strings concatenate into that direction's TCP byte stream with no transformation, replay or duplication. Empty data messages are forbidden. The receiver writes bytes in order, handling partial TCP writes; framing carries no message-boundary meaning for the target application. Backpressure MUST propagate between TCP and QUIC with bounded queues; one blocked flow MUST NOT prevent control processing or independent flow progress.
+
+TCP read EOF means: finish queued DATA, then send QUIC FIN in that direction. On receiving FIN at a message boundary after success, deliver all preceding bytes before shutdown of the destination socket's write half. The reverse direction remains available until its own EOF. Both clean FIN directions and drained queues complete the flow and release its socket. After a complete CHANNEL_OPEN, FIN before CONNECTED or inside a subsequent frame is an incomplete exchange, never a successful empty flow; abort it locally with INTERNAL_ERROR. The base §8.3 rule for an initial stream ending before CHANNEL_OPEN still applies. A clean FIN after success is valid even with no DATA (empty TCP direction).
+
+TCP reset, local I/O failure, stream reset/STOP_SENDING, timeout or rule revocation aborts the entire flow: close both halves of its local socket, discard undelivered queues and reset/stop the stream. Such failures MUST NOT be turned into graceful EOF or a successful delivery indication. This does not prove what a target application processed. No end-to-end application receipt, transfer hash, resume or exactly-once transaction guarantee is provided. A data/flow failure leaves the rule available for subsequent independent TCP connections unless that rule itself was revoked. Unexpected or duplicate messages on a live stream, data before success, invalid known fields and wrong message direction are Connection PROTOCOL_VIOLATION (§11.4).
+
+## 18.7 Status, deadlines and bounds
+FORWARD_READY and FORWARD_CONNECTED use their own status namespace. Unknown statuses are treated as a FAILED outcome, never as success; field 1 MUST be absent for every nonzero status:
+
+| Status | Name | Meaning |
+|---|---|---|
+| 0 | OK | rule installed / target TCP connected |
+| 1 | ACCESS_DENIED | policy or OS authority refuses |
+| 2 | UNSUPPORTED | well-formed mode/address/facility unsupported |
+| 3 | ADDRESS_IN_USE | listener address/port unavailable |
+| 4 | NAME_NOT_FOUND | target DNS resolution failed |
+| 5 | NETWORK_UNREACHABLE | no route to target network |
+| 6 | HOST_UNREACHABLE | target host unreachable |
+| 7 | CONNECTION_REFUSED | target TCP refusal |
+| 8 | LIMIT_EXCEEDED | resource budget exhausted |
+| 9 | FAILED | other local failure |
+
+Statuses are not QUIC error codes. Unknown status values MUST be treated as FAILED with no success data used. A receiver MUST NOT disclose raw resolver errors, local paths or other secrets. Bind authorization and target policy refusal are ACCESS_DENIED; a target is not probed to refine that outcome. Establishment timeouts abort the affected Channel with TIMEOUT rather than inventing a success status. Policy refusal MUST NOT fall back to an unfiltered address or another mode.
+
+RECOMMENDED deadlines: 10 s from rule CHANNEL_OPEN until READY; 10 s from flow CHANNEL_OPEN until CONNECTED, including DNS and all connect candidates; 10 s for a SOCKS greeting/request; 60 s without forwarding progress when application bytes are queued or a frame is partial. A successful idle flow and an idle rule have no service idle timeout by default. QUIC keepalive/Connection idle rules still apply (§13.3). Endpoints MUST bound opening, DNS, connects, stream-credit waits, partial-frame waits, queued TCP writes and teardown, and MUST enforce deadlines independently of blocked I/O. Receiver connect/setup timers start on complete CHANNEL_OPEN; an incomplete initial frame is separately bounded by 10 s from observing the stream. The local SOCKS total handshake deadline starts at TCP accept. The first applicable deadline wins; a trickle of bytes MUST NOT extend an absolute opening deadline. On opening timeout reset/stop only that Channel, and release provisional sockets; rule-opening failure also invalidates all its provisional flows. After both FINs, a blocked delivery queue remains subject to its progress deadline.
+
+Both Endpoints MUST enforce the negotiated rule/flow maxima before allocating their expensive resources, and bound simultaneous accepts, queued sockets, DNS results, connect candidates, memory and tasks both per Connection and in aggregate. The Server MUST additionally limit by Account across Connections. RECOMMENDED aggregate Server defaults: 32 rules/256 flows per Account, 256 rules/2048 flows total, 16 DNS candidates per attempt, and at most 256 KiB of queued application bytes per flow across both directions. Implementations MUST also cap pending pre-Channel TCP/SOCKS sockets (RECOMMENDED 64 per Connection and 256 total). Client aggregate limits MUST cover all its Connections. Endpoints MUST also cap buffered bytes across flows (RECOMMENDED 32 MiB per Connection, plus 8 KiB per pending SOCKS handshake); reading pauses before bounds are exceeded, counting partial frames and outstanding native I/O. Opening, half-closed, cancelling and unreaped resources continue counting until actually released. A rejected admission closes the accepted socket promptly; it never queues an unbounded retry. Simultaneous admissions and revocation require atomic reservation/invalidation, including callbacks racing teardown. Lower configured aggregate limits may cause a well-formed opening to fail with LIMIT_EXCEEDED without changing the negotiated maxima. Server-opened streams and all pending waits are included, not exempt auxiliary resources.
+
+## 18.8 Server and Client policy (PG004)
+Forwarding MUST be disabled by default until explicitly enabled by trusted administrator policy (the operator-controlled Server configuration, including an unprivileged standalone Server). Authentication or permission to execute a terminal command alone MUST NOT enable it. Authorization is the intersection of global Server policy, Account policy and restrictions already present in the Authentication Context; key-policy provisioning remains PI002/RI003. The Server MUST enforce allowed modes, remote listener addresses/ports, ingress source restrictions when configured, permitted target addresses/ports for local and dynamic flows, and Account/global budgets. Listening and connecting MUST use no greater OS authority than authorized for the Account; a privileged Server MUST NOT make low-port binding or network-policy bypass available just because its service process can do so. If the platform cannot enforce this boundary it MUST refuse the operation.
+
+For local/dynamic destinations, policy is checked before DNS using the requested name/port when name rules exist, and MUST be checked against each numeric candidate/port before any connect attempt. Name authorization alone MUST NOT bypass numeric destination restrictions. Resolution MUST NOT use search suffixes. The connector MUST use the already checked numeric address directly without a second name lookup. Re-resolution on another flow requires another check; DNS rebinding, alternate A/AAAA results and IPv4-mapped addresses cannot broaden the allowed set. Disallowed candidates are never probed; if none are allowed return ACCESS_DENIED. An empty/failed DNS resolution returns NAME_NOT_FOUND. Limits/deadlines apply even to refused or attacker-controlled DNS results. Local and private addresses, including loopback, MAY be explicitly allowed for intended forwarding; they are not implicitly granted. IPv6 scope-dependent destinations are refused rather than guessed.
+
+Remote binds MUST match policy before creating listeners; wildcard/non-loopback exposure needs explicit administrator permission as well as Client configuration. Port 0 requires permission for the actual assigned port: bind provisionally, validate getsockname against policy, and close without accepting if disallowed. An ingress filter MUST run before dispatching the flow. A remote rule intentionally delegates reachability of its Server listener to one Client-configured target; the Server cannot verify that target and MUST NOT claim destination filtering there. Administrators that cannot accept this delegation must disable remote mode. The Client MUST apply its own destination policy, exact local rule binding and checked numeric DNS/connect procedure on every remote flow. No peer message may replace that target. Compromise of an explicitly configured Client target is outside destination-filter guarantees.
+
+Policy changes denying an existing rule or flow MUST invalidate it and abort affected sockets on local observation, without awaiting peer acknowledgement. Where only one flow's destination is revoked, unrelated allowed flows may remain. Late asynchronous completions MUST NOT reopen access. These controls are enforced by the Endpoint owning the resource; a malicious peer cannot be trusted to close its own resources. Policy diagnostics SHOULD remain local. Forwarding exposes services reachable by the connecting Endpoint, including services without their own authentication; trusted local configuration MUST identify the direction, bind exposure and target. The tunnel encrypts only the Client–Server segment, not the external TCP legs.
+
+## 18.9 Dynamic forwarding (PG003)
+The Client implements a deliberately restricted SOCKS5 CONNECT proxy using the packet layouts and reply meanings of [RFC 1928](https://www.rfc-editor.org/rfc/rfc1928.html), §§3–6. This is not a claim of complete RFC 1928 conformance: GSSAPI, username/password, BIND and UDP ASSOCIATE are not part of profile 1. It accepts only version 5, method 0 (no authentication), command 1 (CONNECT), reserved byte 0, and IPv4/domain/IPv6 address forms. No acceptable method yields method 0xFF and close; BIND/UDP yield REP 0x07; unsupported address forms yield REP 0x08. Malformed/incomplete requests are refused and closed under the handshake deadline. Implementations MUST bound greeting, request and early-data buffering; extra pipelined bytes cannot be forwarded before CONNECTED success.
+
+SOCKS has no local user authentication in this profile. The listener MUST default to loopback. Exposing it on a non-loopback address requires explicit local configuration acknowledging that reachable users can consume this Account's forwarding authority, plus a configured local ingress allowlist. An unavailable ingress enforcement facility means refusal. SOCKS is terminated at the Client; greeting/authentication/request bytes are never sent as target application data. One SOCKS CONNECT creates one kind-5 flow under a dynamic rule. Numeric forms are normalized per §18.3; domain form is validated/converted to that ASCII representation locally, then sent as a name to the Server for resolution. A request naming an unsupported scoped destination is refused. Applications that resolve names themselves can still perform local DNS; the proxy MUST NOT claim to prevent those leaks.
+
+Only after FORWARD_CONNECTED success does the Client send SOCKS REP 0x00, using its field 1 as BND.ADDR/BND.PORT, and begin data relay. Failure maps ACCESS_DENIED to 0x02, NETWORK_UNREACHABLE to 0x03, NAME_NOT_FOUND/HOST_UNREACHABLE to 0x04, CONNECTION_REFUSED to 0x05, UNSUPPORTED address to 0x08 and other failures (including TIMEOUT/limits/cancellation) to 0x01. Failure replies use an all-zero IPv4 bound address/port and close promptly (within the RFC's 10 s maximum). A locally failed reply write aborts the flow. After successful reply, TCP EOF/reset and QUIC FIN/reset follow §18.6. No SOCKS request is automatically retried on Connection loss. UDP remains outside PG001–PG004 even though the tunnel itself runs over QUIC/UDP.
+
+
 # Security Considerations
 Collected from all sections; consolidated in Tier PJ.
+- TCP forwarding requires explicit local configuration and administrator/Account policy, checks every numeric DNS candidate, and never accepts a Server-selected Client target. Rules end with their Connection, cancellation aborts pending work and live sockets, and only the STPT segment is encrypted (§18).
 - Ambiguous requirements cause insecure implementations; security requirements use MUST / MUST NOT (§0.1).
 - Peer input is untrusted; protocol violations fail closed (§0.2).
 - Version downgrade is prevented by negotiation inside TLS and by the no-fallback rule (§5).
@@ -1550,3 +1702,9 @@ Collected from all sections; consolidated in Tier PJ.
 - draft-58 (2026-11-24): records the Linux implementation of PF004 in 0.4.5-0. No wire changes.
 - draft-57 (2026-11-24): records the RF003 one-shot implementation and trusted local terminal in 0.4.4-0. Wire assignments are unchanged.
 - draft-56 (2026-11-24): records the RF002 Session-local command and target selection in 0.4.3-0. No wire changes.
+
+- draft-59 (2026-11-25): specifies TCP local/remote/dynamic forwarding, Connection-scoped rules, capability 4 and kinds 4/5, framed flows with half-close, SOCKS5 CONNECT, policy, cancellation, deadlines and resource limits (§18; PG001–PG004). Unimplemented; scenario acceptance criteria are in docs/PG_REVIEW.md.
+
+- draft-60 (2026-11-25): records program 0.5.0-0 implementation of PG001–PG004 (RG001–RG004), with Connection-scoped TCP forwarding, restricted SOCKS5 CONNECT, Account-authorized native sockets and explicit opt-in policy. No wire allocations or normative requirements changed.
+
+- draft-61 (2026-11-25): records the full RG scenario review and program 0.5.0-1 fixes for early-flow cancellation, retained Account quota identity, TIMEOUT signalling, blocked replies and foreground route monitoring. Wire allocations and normative requirements are unchanged.

@@ -49,10 +49,12 @@ An item is completed when its part of specs\PROTOCOL.md is written and its quest
 Tier PF scenario review completed ✅ 2026-11-24 in draft-54. See [scenarios and outcomes](PF_REVIEW.md).
 
 # 7	Tier PG — Port Forwarding
-- [ ] PG001  local forwarding; binding to Connection or Session ➕ 2026-10-13
-- [ ] PG002  remote forwarding ➕ 2026-10-13
-- [ ] PG003  dynamic forwarding (SOCKS) ➕ 2026-10-13
-- [ ] PG004  Server forwarding policy ➕ 2026-10-13
+- [x] PG001  local forwarding; binding to Connection or Session ➕ 2026-10-13 ✅ 2026-11-25
+- [x] PG002  remote forwarding ➕ 2026-10-13 ✅ 2026-11-25
+- [x] PG003  dynamic forwarding (SOCKS) ➕ 2026-10-13 ✅ 2026-11-25
+- [x] PG004  Server forwarding policy ➕ 2026-10-13 ✅ 2026-11-25
+
+Tier PG scenario review completed ✅ 2026-11-25 in draft-59. See [acceptance scenarios and specification review](PG_REVIEW.md). Program implementation remains RG001–RG004.
 
 # 8	Tier PH — Audit
 - [ ] PH001  audit events ➕ 2026-10-13

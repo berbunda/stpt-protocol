@@ -14,3 +14,7 @@ The [combined RF review](docs/PF_REVIEW.md#combined-rf-implementation-review-045
 Program 0.4.2-0 implements the Client permission state for PF001. At that milestone, the Session-local request path and confirmation interface were still pending.
 
 Program 0.4.3-0 implements the Session-local command and Attachment selection for PF002. Program 0.4.4-0 implements the PF003 Server-opened Channel for read and create, with one-time approval in a separate local terminal. Program 0.4.5-0 adds read-only Client directory mounts on Linux, with local revocation and automatic teardown when the bound Attachment, Session or Connection ends.
+
+[Protocol §18](specs/PROTOCOL.md) defines draft TCP local, remote and dynamic (restricted SOCKS5 CONNECT) forwarding, Connection-scoped lifetime and Server/Client policy (PG001–PG004, draft-59). The [Tier PG scenario review](docs/PG_REVIEW.md) records acceptance criteria. Program 0.5.0-0 implements RG001–RG004 (recorded in draft-60): the foreground `forward` command, opt-in per-Account policy and native Account-authorized sockets. The CLI runs one rule per Connection. UDP forwarding stays in the on-request backlog.
+
+Program 0.5.0-1 completed the [full 41-scenario RG review](docs/RG_REVIEW.md), with cancellation/quota/deadline fixes, foreground migration monitoring and Windows/Linux validation. Specification draft-61 records the result without changing the forwarding wire profile.
